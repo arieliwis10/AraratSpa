@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1e3a8a;
+  --color-primary-light: #2563eb;
+  --color-danger: #b91c1c;
+  --color-danger-light: #dc2626;
+  --color-dark: #0f0f0f;
+  --color-dark-soft: #1f1f1f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+}

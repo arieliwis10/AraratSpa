@@ -1,0 +1,10 @@
+import api from './axios'
+
+export const getTrabajos = (params = {}) => api.get('trabajos-maestranza/', { params })
+export const crearTrabajo = (formData) =>
+  api.post('trabajos-maestranza/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+export const actualizarTrabajo = (id, data) => api.patch(`trabajos-maestranza/${id}/`, data)
+export const aprobarTrabajo = (id) => api.patch(`trabajos-maestranza/${id}/aprobar/`)
+export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}/agregar_material/`, data)
