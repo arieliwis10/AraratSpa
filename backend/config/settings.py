@@ -123,7 +123,7 @@ STATIC_URL = 'static/'
 AUTH_USER_MODEL = 'core.Usuario'
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # donde va a correr React (Vite)
+    'https://app.araratchile.com',
 ]
 
 REST_FRAMEWORK = {

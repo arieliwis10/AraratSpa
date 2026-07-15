@@ -6,5 +6,8 @@ export const crearTrabajo = (formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 export const actualizarTrabajo = (id, data) => api.patch(`trabajos-maestranza/${id}/`, data)
+export const actualizarProgreso = (id, data) => api.patch(`trabajos-maestranza/${id}/actualizar_progreso/`, data)
 export const aprobarTrabajo = (id) => api.patch(`trabajos-maestranza/${id}/aprobar/`)
+export const marcarCompletado = (id) => api.patch(`trabajos-maestranza/${id}/marcar_completado/`)
+export const elegirEntrega = (id, data) => api.patch(`trabajos-maestranza/${id}/elegir_entrega/`, data)
 export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}/agregar_material/`, data)

@@ -9,7 +9,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = Usuario
@@ -22,11 +22,20 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         usuario.save()
         return usuario
 
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
+        instance.save()
+        return instance
+
 
 class MaterialUsadoSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialUsado
-        fields = ['id', 'trabajo', 'nombre', 'cantidad', 'unidad', 'created_at']
+        fields = ['id', 'trabajo', 'nombre', 'cantidad', 'created_at']
         read_only_fields = ['trabajo']
 
 
@@ -43,7 +52,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'id', 'cliente', 'cliente_nombre', 'asignado_a', 'asignado_a_nombre',
             'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
-            'modalidad_entrega', 'materiales', 'created_at', 'updated_at'
+            'modalidad_entrega', 'direccion_entrega', 'materiales', 'created_at', 'updated_at'
         ]
         read_only_fields = ['cliente']
 

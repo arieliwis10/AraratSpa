@@ -1,10 +1,78 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getTrabajos, crearTrabajo } from '../api/maestranza'
+import { getTrabajos, crearTrabajo, elegirEntrega } from '../api/maestranza'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
+
+function SelectorEntrega({ trabajo, onElegido }) {
+  const [modalidad, setModalidad] = useState('RETIRO')
+  const [direccion, setDireccion] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function confirmar() {
+    if (modalidad === 'DELIVERY' && !direccion.trim()) {
+      alert('Ingresa la dirección de entrega')
+      return
+    }
+    setEnviando(true)
+    try {
+      await elegirEntrega(trabajo.id, {
+        modalidad_entrega: modalidad,
+        direccion_entrega: modalidad === 'DELIVERY' ? direccion : '',
+      })
+      onElegido()
+    } catch (err) {
+      alert('Error al confirmar la entrega')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 bg-primary/5 border border-primary/20 rounded p-3">
+      <p className="text-sm font-medium text-dark mb-2">
+        🎉 Tu trabajo está listo. ¿Cómo quieres recibirlo?
+      </p>
+      <div className="flex gap-2 mb-2">
+        <button
+          type="button"
+          onClick={() => setModalidad('RETIRO')}
+          className={`flex-1 px-3 py-2 rounded text-sm font-medium ${
+            modalidad === 'RETIRO' ? 'bg-primary text-white' : 'bg-white text-dark border'
+          }`}
+        >
+          Retiro en local
+        </button>
+        <button
+          type="button"
+          onClick={() => setModalidad('DELIVERY')}
+          className={`flex-1 px-3 py-2 rounded text-sm font-medium ${
+            modalidad === 'DELIVERY' ? 'bg-primary text-white' : 'bg-white text-dark border'
+          }`}
+        >
+          Delivery
+        </button>
+      </div>
+      {modalidad === 'DELIVERY' && (
+        <input
+          value={direccion}
+          onChange={(e) => setDireccion(e.target.value)}
+          placeholder="Dirección de entrega"
+          className="w-full border rounded p-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+      )}
+      <button
+        onClick={confirmar}
+        disabled={enviando}
+        className="w-full bg-primary text-white py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
+      >
+        {enviando ? 'Confirmando...' : 'Confirmar'}
+      </button>
+    </div>
+  )
+}
 
 export default function ClienteMaestranza() {
   const { usuario, logout } = useAuth()
@@ -67,7 +135,6 @@ export default function ClienteMaestranza() {
           />
         ) : (
           <div className="flex flex-col gap-6">
-            {/* Categorías */}
             <div>
               <h2 className="text-dark font-medium mb-3">Elige una categoría</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -84,7 +151,6 @@ export default function ClienteMaestranza() {
               </div>
             </div>
 
-            {/* Historial de trabajos */}
             <div>
               <h2 className="text-dark font-medium mb-3">Tus trabajos</h2>
               {cargando ? (
@@ -106,22 +172,45 @@ export default function ClienteMaestranza() {
                         </div>
                         <BadgeEstado estado={t.estado} />
                       </div>
+
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
                         <span>Centro de costo: {t.centro_costo}</span>
-                        {t.tiempo_entrega && <span>Entrega: {t.tiempo_entrega}</span>}
+                        {t.tiempo_entrega && <span>Entrega estimada: {t.tiempo_entrega}</span>}
                         <span>Avance: {t.avance}%</span>
-                        {t.modalidad_entrega && (
-                          <span>
-                            {t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : 'Delivery'}
-                          </span>
-                        )}
+                        {t.asignado_a_nombre && <span>Trabajador: {t.asignado_a_nombre}</span>}
                       </div>
+
                       {t.foto && (
                         <img
                           src={t.foto}
                           alt="evidencia"
                           className="mt-2 w-20 h-20 object-cover rounded border"
                         />
+                      )}
+
+                      {t.materiales?.length > 0 && (
+                        <div className="mt-3 border rounded p-2 bg-gray-50">
+                          <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
+                          <ul className="text-xs text-gray-600 list-disc pl-4">
+                            {t.materiales.map((mat) => (
+                              <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Trabajo terminado, todavía sin elegir modalidad */}
+                      {t.estado === 'TERMINADO' && !t.modalidad_entrega && (
+                        <SelectorEntrega trabajo={t} onElegido={cargarTrabajos} />
+                      )}
+
+                      {/* Trabajo terminado, ya con modalidad confirmada */}
+                      {t.estado === 'TERMINADO' && t.modalidad_entrega && (
+                        <div className="mt-3 bg-green-50 text-green-700 text-sm font-medium rounded p-2 text-center">
+                          {t.modalidad_entrega === 'RETIRO'
+                            ? '✅ Confirmado: Retiro en local'
+                            : `✅ Confirmado: Delivery a ${t.direccion_entrega}`}
+                        </div>
                       )}
                     </div>
                   ))}

@@ -8,7 +8,7 @@ backend/media/
 
 # Frontend - Node / React
 frontend/node_modules/
-frontend/dist/
+# frontend/dist/
 frontend/.env
 
 # Editor / OS
