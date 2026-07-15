@@ -5,3 +5,20 @@ deployment:
     - export DEPLOYPATH_APP=/home/araratch/app.araratchile.com/
     - /bin/cp -R backend/* $DEPLOYPATH_API
     - /bin/cp -R frontend/dist/* $DEPLOYPATH_APP
+
+
+######## Crea una rama de trabajo
+#git checkout -b desarrollo
+
+####### Trabajas y haces commits normalmente en esta rama
+#git add .
+#git commit -m "Nueva funcionalidad X"
+#git push origin desarrollo
+
+#Mientras estés en la rama desarrollo, nada afecta producción (cPanel sigue apuntando a main). Solo cuando algo esté listo y probado localmente:
+
+#git checkout main
+#git merge desarrollo
+#git push origin main
+
+
