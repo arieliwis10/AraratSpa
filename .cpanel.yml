@@ -5,3 +5,9 @@ deployment:
     - export DEPLOYPATH_APP=/home/araratch/app.araratchile.com/
     - /bin/cp -R backend/* $DEPLOYPATH_API
     - /bin/cp -R frontend/dist/* $DEPLOYPATH_APP
+
+
+
+
+
+###
