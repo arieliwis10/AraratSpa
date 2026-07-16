@@ -2,6 +2,23 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 
+class Empresa(models.Model):
+    nombre = models.CharField(max_length=150)
+    rut = models.CharField(max_length=20, blank=True)
+
+    def __str__(self):
+        return self.nombre
+
+
+class Responsable(models.Model):
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='responsables')
+    nombre = models.CharField(max_length=150)
+    telefono = models.CharField(max_length=20, blank=True)
+
+    def __str__(self):
+        return f"{self.nombre} ({self.empresa.nombre})"
+
+
 class Usuario(AbstractUser):
     class Rol(models.TextChoices):
         ADMIN = 'ADMIN', 'Administrador'
@@ -10,6 +27,9 @@ class Usuario(AbstractUser):
 
     rol = models.CharField(max_length=20, choices=Rol.choices, default=Rol.CLIENTE)
     telefono = models.CharField(max_length=20, blank=True)
+    empresa = models.ForeignKey(
+        Empresa, on_delete=models.SET_NULL, null=True, blank=True, related_name='clientes'
+    )
 
     def __str__(self):
         return f"{self.username} ({self.get_rol_display()})"
@@ -40,6 +60,11 @@ class TrabajoMaestranza(models.Model):
         Usuario, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='trabajos_asignados', limit_choices_to={'rol': 'TRABAJADOR'}
     )
+    responsable = models.ForeignKey(
+        Responsable, on_delete=models.SET_NULL, null=True, blank=True, related_name='trabajos'
+    )
+
+    correlativo = models.PositiveIntegerField(default=0)
 
     categoria = models.CharField(max_length=20, choices=Categoria.choices)
     descripcion = models.TextField()
@@ -53,8 +78,24 @@ class TrabajoMaestranza(models.Model):
     modalidad_entrega = models.CharField(max_length=20, choices=Entrega.choices, null=True, blank=True)
     direccion_entrega = models.CharField(max_length=255, blank=True)
 
+    retrasado = models.BooleanField(default=False)
+    motivo_retraso = models.TextField(blank=True)
+    fecha_retraso = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.correlativo:
+            empresa = self.cliente.empresa
+            if empresa:
+                ultimo = TrabajoMaestranza.objects.filter(
+                    cliente__empresa=empresa
+                ).order_by('-correlativo').first()
+                self.correlativo = (ultimo.correlativo + 1) if ultimo else 1
+            else:
+                self.correlativo = 1
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.get_categoria_display()} - {self.cliente.username}"
@@ -68,6 +109,23 @@ class MaterialUsado(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.cantidad})"
+
+
+class SolicitudMaterial(models.Model):
+    class Estado(models.TextChoices):
+        REVISION = 'REVISION', 'En revisión'
+        PENDIENTE = 'PENDIENTE', 'Pendiente de compra'
+        RECIBIDO = 'RECIBIDO', 'Recibido'
+
+    trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='solicitudes_material')
+    descripcion = models.TextField(blank=True)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.REVISION)
+    lugar_compra = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    resuelto_en = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Compra para {self.trabajo} ({self.estado})"
 
 
 class Maquina(models.Model):

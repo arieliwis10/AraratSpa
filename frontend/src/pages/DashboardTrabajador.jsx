@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getTrabajos, actualizarProgreso, marcarCompletado, agregarMaterial } from '../api/maestranza'
+import { getTrabajos, actualizarProgreso, marcarCompletado, agregarMaterial, reportarRetraso, marcarMaterialRecibido, getSolicitudesMaterial } from '../api/maestranza'
 import BadgeEstado from '../components/BadgeEstado'
 
 export default function DashboardTrabajador() {
@@ -8,11 +8,15 @@ export default function DashboardTrabajador() {
   const [trabajos, setTrabajos] = useState([])
   const [editando, setEditando] = useState(null)
   const [nuevoMaterial, setNuevoMaterial] = useState({ nombre: '', cantidad: '' })
+  const [mostrarRetraso, setMostrarRetraso] = useState(false)
+  const [motivoRetraso, setMotivoRetraso] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [solicitudesPorTrabajo, setSolicitudesPorTrabajo] = useState({})
 
-  useEffect(() => {
-    cargarTrabajos()
-  }, [])
+ useEffect(() => {
+  cargarTrabajos()
+  cargarSolicitudes()
+}, [])
 
   async function cargarTrabajos() {
     setCargando(true)
@@ -24,14 +28,24 @@ export default function DashboardTrabajador() {
     }
   }
 
+  async function cargarSolicitudes() {
+    const res = await getSolicitudesMaterial()
+    const mapa = {}
+    res.data.filter(s => s.estado === 'PENDIENTE').forEach(s => {
+      mapa[s.trabajo] = s.id
+    })
+    setSolicitudesPorTrabajo(mapa)
+  }
+
   function abrirEdicion(trabajo) {
     setEditando({
       id: trabajo.id,
       estado: trabajo.estado,
       avance: trabajo.avance,
-      tiempo_entrega: trabajo.tiempo_entrega || '',
     })
     setNuevoMaterial({ nombre: '', cantidad: '' })
+    setMostrarRetraso(false)
+    setMotivoRetraso('')
   }
 
   async function guardarCambios() {
@@ -39,7 +53,6 @@ export default function DashboardTrabajador() {
       await actualizarProgreso(editando.id, {
         estado: editando.estado,
         avance: editando.avance,
-        tiempo_entrega: editando.tiempo_entrega || null,
       })
       setEditando(null)
       cargarTrabajos()
@@ -66,6 +79,31 @@ export default function DashboardTrabajador() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al agregar el material')
+    }
+  }
+
+  async function handleMaterialRecibido(trabajoId) {
+    const solicitudId = solicitudesPorTrabajo[trabajoId]
+    if (!solicitudId) return
+    if (!confirm('¿Confirmas que llegó el material? El trabajo podrá continuar.')) return
+    try {
+      await marcarMaterialRecibido(solicitudId)
+      cargarTrabajos()
+      cargarSolicitudes()
+    } catch (err) {
+      alert('Error al marcar como recibido')
+    }
+  }
+
+  async function handleReportarRetraso(trabajoId) {
+    try {
+      await reportarRetraso(trabajoId, motivoRetraso)
+      setMostrarRetraso(false)
+      setMotivoRetraso('')
+      cargarTrabajos()
+      alert('Retraso reportado. El admin fue notificado.')
+    } catch (err) {
+      alert('Error al reportar el retraso')
     }
   }
 
@@ -102,7 +140,7 @@ export default function DashboardTrabajador() {
                 <div key={t.id} className="bg-white rounded-lg shadow p-4">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="text-xs font-bold text-primary uppercase">{t.categoria_display}</span>
+                      <span className="text-xs font-bold text-primary uppercase">{t.categoria_display} #{t.correlativo}</span>
                       <p className="text-sm font-medium text-dark">{t.cliente_nombre}</p>
                       <p className="text-sm text-gray-600">{t.descripcion}</p>
                     </div>
@@ -112,8 +150,21 @@ export default function DashboardTrabajador() {
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
                     <span>Centro de costo: {t.centro_costo}</span>
                     <span>Avance: {t.avance}%</span>
-                    {t.tiempo_entrega && <span>Entrega: {t.tiempo_entrega}</span>}
+                    {t.tiempo_entrega && <span>Entrega estimada: {t.tiempo_entrega}</span>}
                   </div>
+
+                  {t.retrasado && (
+                    <div className="mb-3 bg-danger/10 border border-danger/30 rounded p-3">
+                      <p className="text-sm font-bold text-danger">⚠️ Esperando material</p>
+                      {t.motivo_retraso && <p className="text-xs text-danger mt-1">{t.motivo_retraso}</p>}
+                      <button
+                        onClick={() => handleMaterialRecibido(t.id)}
+                        className="mt-2 bg-primary text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-primary-light"
+                      >
+                        ✓ Material recibido, continuar trabajo
+                      </button>
+                    </div>
+                  )}
 
                   {t.foto && <img src={t.foto} alt="evidencia" className="w-20 h-20 object-cover rounded border mb-3" />}
 
@@ -152,14 +203,47 @@ export default function DashboardTrabajador() {
                             className="w-full border rounded p-2 text-sm"
                           />
                         </div>
-                        <div className="col-span-2">
-                          <label className="block text-xs font-medium mb-1 text-dark">Tiempo de entrega</label>
-                          <input
-                            type="date" value={editando.tiempo_entrega}
-                            onChange={(e) => setEditando({ ...editando, tiempo_entrega: e.target.value })}
-                            className="w-full border rounded p-2 text-sm"
-                          />
-                        </div>
+                      </div>
+
+                      {/* Reportar retraso */}
+                      <div className="border-t pt-3">
+                        {!mostrarRetraso ? (
+                          <button
+                            type="button"
+                            onClick={() => setMostrarRetraso(true)}
+                            className="bg-danger/10 text-danger px-3 py-2 rounded text-sm font-medium hover:bg-danger/20"
+                          >
+                            ⚠️ Reportar retraso del trabajo
+                          </button>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            <label className="block text-xs font-medium text-dark">
+                              Motivo del retraso (opcional)
+                            </label>
+                            <input
+                              value={motivoRetraso}
+                              onChange={(e) => setMotivoRetraso(e.target.value)}
+                              placeholder="Ej: Falta de material, imprevisto..."
+                              className="border rounded p-2 text-sm"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleReportarRetraso(t.id)}
+                                className="bg-danger text-white px-3 py-1.5 rounded text-sm font-medium hover:bg-danger-light"
+                              >
+                                Confirmar retraso
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setMostrarRetraso(false)}
+                                className="bg-dark/10 text-dark px-3 py-1.5 rounded text-sm"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {listoParaCompletar && (

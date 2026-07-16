@@ -11,3 +11,10 @@ export const aprobarTrabajo = (id) => api.patch(`trabajos-maestranza/${id}/aprob
 export const marcarCompletado = (id) => api.patch(`trabajos-maestranza/${id}/marcar_completado/`)
 export const elegirEntrega = (id, data) => api.patch(`trabajos-maestranza/${id}/elegir_entrega/`, data)
 export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}/agregar_material/`, data)
+export const reportarRetraso = (id, motivo) => api.patch(`trabajos-maestranza/${id}/reportar_retraso/`, { motivo })
+
+export const getSolicitudesMaterial = () => api.get('solicitudes-material/')
+export const hayEnBodega = (id) => api.patch(`solicitudes-material/${id}/hay_en_bodega/`)
+export const enviarACompras = (id) => api.patch(`solicitudes-material/${id}/enviar_a_compras/`)
+export const marcarMaterialRecibido = (id, lugarCompra) =>
+  api.patch(`solicitudes-material/${id}/marcar_recibido/`, { lugar_compra: lugarCompra })

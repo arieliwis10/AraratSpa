@@ -1,11 +1,30 @@
 from rest_framework import serializers
-from .models import Usuario, TrabajoMaestranza, MaterialUsado, Maquina, ReservaMaquina
+from .models import (
+    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
+    SolicitudMaterial, Maquina, ReservaMaquina
+)
+
+
+class ResponsableSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Responsable
+        fields = ['id', 'empresa', 'nombre', 'telefono']
+
+
+class EmpresaSerializer(serializers.ModelSerializer):
+    responsables = ResponsableSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Empresa
+        fields = ['id', 'nombre', 'rut', 'responsables']
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
+
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'rol', 'telefono']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'rol', 'telefono', 'empresa', 'empresa_nombre']
 
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
@@ -13,7 +32,7 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'rol', 'telefono', 'password']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'rol', 'telefono', 'empresa', 'password']
 
     def create(self, validated_data):
         password = validated_data.pop('password')
@@ -39,8 +58,26 @@ class MaterialUsadoSerializer(serializers.ModelSerializer):
         read_only_fields = ['trabajo']
 
 
+class SolicitudMaterialSerializer(serializers.ModelSerializer):
+    trabajo_descripcion = serializers.CharField(source='trabajo.descripcion', read_only=True)
+    trabajo_categoria = serializers.CharField(source='trabajo.get_categoria_display', read_only=True)
+    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True)
+    cliente_nombre = serializers.CharField(source='trabajo.cliente.username', read_only=True)
+    empresa_nombre = serializers.CharField(source='trabajo.cliente.empresa.nombre', read_only=True, default=None)
+
+    class Meta:
+        model = SolicitudMaterial
+        fields = [
+            'id', 'trabajo', 'trabajo_descripcion', 'trabajo_categoria', 'trabajo_correlativo',
+            'cliente_nombre', 'empresa_nombre', 'descripcion', 'estado', 'lugar_compra',
+            'created_at', 'resuelto_en'
+        ]
+
+
 class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
+    responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
     asignado_a_nombre = serializers.CharField(source='asignado_a.username', read_only=True, default=None)
     categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
@@ -49,12 +86,14 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrabajoMaestranza
         fields = [
-            'id', 'cliente', 'cliente_nombre', 'asignado_a', 'asignado_a_nombre',
+            'id', 'correlativo', 'cliente', 'cliente_nombre', 'empresa_nombre',
+            'responsable', 'responsable_nombre', 'asignado_a', 'asignado_a_nombre',
             'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
-            'modalidad_entrega', 'direccion_entrega', 'materiales', 'created_at', 'updated_at'
+            'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
+            'fecha_retraso', 'materiales', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['cliente']
+        read_only_fields = ['cliente', 'correlativo']
 
 
 class MaquinaSerializer(serializers.ModelSerializer):

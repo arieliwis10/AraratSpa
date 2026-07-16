@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'https://api.araratchile.com/api/',
+  baseURL: import.meta.env.VITE_API_URL,
 })
 
 // Interceptor: agrega el token a cada petición automáticamente

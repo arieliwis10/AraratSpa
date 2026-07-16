@@ -159,7 +159,6 @@ export default function AdminEmpresas() {
 
                 {empresaExpandida === emp.id && (
                   <div className="mt-3 border-t pt-3 flex flex-col gap-4">
-                    {/* Usuarios/Clientes asignados */}
                     <div>
                       <p className="text-xs font-bold text-dark mb-2">Usuarios asignados a esta empresa</p>
                       {usuariosEmp.length === 0 ? (
@@ -176,7 +175,6 @@ export default function AdminEmpresas() {
                       )}
                     </div>
 
-                    {/* Responsables (contactos sin login) */}
                     <div>
                       <p className="text-xs font-bold text-dark mb-2">Responsables (contactos que encargan trabajos)</p>
                       <div className="flex flex-col gap-2">

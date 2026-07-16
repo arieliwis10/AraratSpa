@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getEmpresas } from '../api/usuarios'
 
 export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancelar }) {
   const [form, setForm] = useState({
@@ -8,14 +9,20 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
     last_name: '',
     telefono: '',
     rol: 'CLIENTE',
+    empresa: '',
     password: '',
   })
+  const [empresas, setEmpresas] = useState([])
 
   useEffect(() => {
     if (usuarioInicial) {
       setForm({ ...usuarioInicial, password: '' })
     }
   }, [usuarioInicial])
+
+  useEffect(() => {
+    getEmpresas().then((res) => setEmpresas(res.data))
+  }, [])
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -100,6 +107,21 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
           <option value="CLIENTE">Cliente</option>
           <option value="TRABAJADOR">Trabajador</option>
           <option value="ADMIN">Administrador</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1 text-dark">Empresa</label>
+        <select
+          name="empresa"
+          value={form.empresa || ''}
+          onChange={handleChange}
+          className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <option value="">Sin empresa</option>
+          {empresas.map((e) => (
+            <option key={e.id} value={e.id}>{e.nombre}</option>
+          ))}
         </select>
       </div>
 

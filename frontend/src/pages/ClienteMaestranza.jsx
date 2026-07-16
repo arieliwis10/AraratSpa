@@ -166,7 +166,7 @@ export default function ClienteMaestranza() {
                       <div className="flex justify-between items-start mb-2">
                         <div>
                           <span className="text-xs font-bold text-primary uppercase">
-                            {t.categoria_display}
+                            {t.categoria_display} #{t.correlativo}
                           </span>
                           <p className="text-sm text-gray-600 mt-1">{t.descripcion}</p>
                         </div>
@@ -177,7 +177,6 @@ export default function ClienteMaestranza() {
                         <span>Centro de costo: {t.centro_costo}</span>
                         {t.tiempo_entrega && <span>Entrega estimada: {t.tiempo_entrega}</span>}
                         <span>Avance: {t.avance}%</span>
-                        {t.asignado_a_nombre && <span>Trabajador: {t.asignado_a_nombre}</span>}
                       </div>
 
                       {t.foto && (

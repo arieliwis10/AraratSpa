@@ -4,12 +4,15 @@ import AdminUsuarios from '../components/admin/AdminUsuarios'
 import AdminMaestranza from '../components/admin/AdminMaestranza'
 import AdminMaquinas from '../components/admin/AdminMaquinas'
 import AdminReservas from '../components/admin/AdminReservas'
+import AdminCompras from '../components/admin/AdminCompras'
+import AdminEmpresas from '../components/admin/AdminEmpresas'
 
 const TABS = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'maestranza', label: 'Maestranza' },
   { id: 'maquinas', label: 'Máquinas' },
   { id: 'reservas', label: 'Reservas' },
+  { id: 'compras', label: 'Compras' },
 ]
 
 export default function DashboardAdmin() {
@@ -52,6 +55,7 @@ export default function DashboardAdmin() {
         {tab === 'maestranza' && <AdminMaestranza />}
         {tab === 'maquinas' && <AdminMaquinas />}
         {tab === 'reservas' && <AdminReservas />}
+        {tab === 'compras' && <AdminCompras />}
       </main>
     </div>
   )

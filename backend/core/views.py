@@ -2,10 +2,13 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from .models import Usuario, TrabajoMaestranza, MaterialUsado, Maquina, ReservaMaquina
+from .models import (
+    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
+    SolicitudMaterial, Maquina, ReservaMaquina
+)
 from .serializers import (
-    UsuarioSerializer, UsuarioCreateSerializer,
-    TrabajoMaestranzaSerializer, MaterialUsadoSerializer,
+    UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
+    TrabajoMaestranzaSerializer, MaterialUsadoSerializer, SolicitudMaterialSerializer,
     MaquinaSerializer, ReservaMaquinaSerializer
 )
 
@@ -13,6 +16,35 @@ from .serializers import (
 class EsAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
+
+
+class EmpresaViewSet(viewsets.ModelViewSet):
+    queryset = Empresa.objects.all()
+    serializer_class = EmpresaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+
+class ResponsableViewSet(viewsets.ModelViewSet):
+    serializer_class = ResponsableSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            return Responsable.objects.all()
+        elif user.rol == 'CLIENTE' and user.empresa:
+            return Responsable.objects.filter(empresa=user.empresa)
+        return Responsable.objects.none()
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
 
 
 class UsuarioViewSet(viewsets.ModelViewSet):
@@ -48,7 +80,6 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         return TrabajoMaestranza.objects.filter(cliente=user).order_by('-created_at')
 
     def get_permissions(self):
-        # Editar/eliminar el registro completo (incluye asignar trabajador) es solo del admin
         if self.action in ['update', 'partial_update', 'destroy']:
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
@@ -68,7 +99,6 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def actualizar_progreso(self, request, pk=None):
-        """Para admin O el trabajador asignado: solo estado, avance y tiempo de entrega."""
         trabajo = self.get_object()
         if not self._puede_operar(request, trabajo):
             return Response({'error': 'No autorizado'}, status=403)
@@ -113,6 +143,23 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         trabajo.save()
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def reportar_retraso(self, request, pk=None):
+        trabajo = self.get_object()
+        if not self._puede_operar(request, trabajo):
+            return Response({'error': 'No autorizado'}, status=403)
+
+        from django.utils import timezone
+        motivo = request.data.get('motivo', '')
+        trabajo.retrasado = True
+        trabajo.motivo_retraso = motivo
+        trabajo.fecha_retraso = timezone.now()
+        trabajo.save()
+
+        SolicitudMaterial.objects.create(trabajo=trabajo, descripcion=motivo)
+
+        return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def agregar_material(self, request, pk=None):
         trabajo = self.get_object()
@@ -122,6 +169,51 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(trabajo=trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+
+class SolicitudMaterialViewSet(viewsets.ModelViewSet):
+    serializer_class = SolicitudMaterialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            return SolicitudMaterial.objects.all().order_by('-created_at')
+        elif user.rol == 'TRABAJADOR':
+            return SolicitudMaterial.objects.filter(trabajo__asignado_a=user).order_by('-created_at')
+        return SolicitudMaterial.objects.none()
+
+    def _resolver(self, solicitud, lugar_compra=''):
+        from django.utils import timezone
+        solicitud.estado = 'RECIBIDO'
+        solicitud.lugar_compra = lugar_compra
+        solicitud.resuelto_en = timezone.now()
+        solicitud.save()
+        solicitud.trabajo.retrasado = False
+        solicitud.trabajo.save()
+
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def hay_en_bodega(self, request, pk=None):
+        solicitud = self.get_object()
+        user = request.user
+        if user.rol != 'ADMIN' and solicitud.trabajo.asignado_a_id != user.id:
+            return Response({'error': 'No autorizado'}, status=403)
+        self._resolver(solicitud, lugar_compra='Bodega propia')
+        return Response(SolicitudMaterialSerializer(solicitud).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def enviar_a_compras(self, request, pk=None):
+        solicitud = self.get_object()
+        solicitud.estado = 'PENDIENTE'
+        solicitud.save()
+        return Response(SolicitudMaterialSerializer(solicitud).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def marcar_recibido(self, request, pk=None):
+        solicitud = self.get_object()
+        lugar_compra = request.data.get('lugar_compra', '')
+        self._resolver(solicitud, lugar_compra=lugar_compra)
+        return Response(SolicitudMaterialSerializer(solicitud).data)
 
 
 class MaquinaViewSet(viewsets.ModelViewSet):

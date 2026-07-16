@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { getResponsables } from '../api/usuarios'
 
 export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar, onCancelar }) {
   const [descripcion, setDescripcion] = useState('')
   const [centroCosto, setCentroCosto] = useState('')
+  const [responsable, setResponsable] = useState('')
+  const [responsables, setResponsables] = useState([])
   const [foto, setFoto] = useState(null)
   const [preview, setPreview] = useState(null)
   const [enviando, setEnviando] = useState(false)
+
+  useEffect(() => {
+    getResponsables().then((res) => setResponsables(res.data))
+  }, [])
 
   function handleFoto(e) {
     const file = e.target.files[0]
@@ -22,6 +29,7 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
     formData.append('categoria', categoria)
     formData.append('descripcion', descripcion)
     formData.append('centro_costo', centroCosto)
+    if (responsable) formData.append('responsable', responsable)
     if (foto) formData.append('foto', foto)
 
     try {
@@ -59,6 +67,22 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
           required
         />
       </div>
+
+      {responsables.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium mb-1 text-dark">¿Quién encarga este trabajo?</label>
+          <select
+            value={responsable}
+            onChange={(e) => setResponsable(e.target.value)}
+            className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Sin especificar</option>
+            {responsables.map((r) => (
+              <option key={r.id} value={r.id}>{r.nombre}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-medium mb-1 text-dark">Foto (opcional)</label>
