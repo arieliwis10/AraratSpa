@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    SolicitudMaterial, Maquina, ReservaMaquina
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
 )
 
 
@@ -58,6 +58,24 @@ class MaterialUsadoSerializer(serializers.ModelSerializer):
         read_only_fields = ['trabajo']
 
 
+class ComentarioTrabajoSerializer(serializers.ModelSerializer):
+    autor_nombre = serializers.SerializerMethodField()
+    autor_rol = serializers.CharField(source='autor.rol', read_only=True)
+    responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
+
+    class Meta:
+        model = ComentarioTrabajo
+        fields = [
+            'id', 'trabajo', 'autor', 'autor_nombre', 'autor_rol',
+            'responsable', 'responsable_nombre', 'mensaje', 'created_at'
+        ]
+        read_only_fields = ['trabajo', 'autor']
+
+    def get_autor_nombre(self, obj):
+        nombre_completo = f"{obj.autor.first_name} {obj.autor.last_name}".strip()
+        return nombre_completo or obj.autor.username
+
+
 class SolicitudMaterialSerializer(serializers.ModelSerializer):
     trabajo_descripcion = serializers.CharField(source='trabajo.descripcion', read_only=True)
     trabajo_categoria = serializers.CharField(source='trabajo.get_categoria_display', read_only=True)
@@ -82,6 +100,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     materiales = MaterialUsadoSerializer(many=True, read_only=True)
+    comentarios = ComentarioTrabajoSerializer(many=True, read_only=True)
 
     class Meta:
         model = TrabajoMaestranza
@@ -91,9 +110,17 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
-            'fecha_retraso', 'materiales', 'created_at', 'updated_at'
+            'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at'
         ]
         read_only_fields = ['cliente', 'correlativo']
+
+    def validate(self, data):
+        # Solo exige responsable al crear un trabajo nuevo (no al editar/actualizar uno existente)
+        if self.instance is None and not data.get('responsable'):
+            raise serializers.ValidationError({
+                'responsable': 'Debes indicar quién de tu empresa encarga este trabajo.'
+            })
+        return data
 
 
 class MaquinaSerializer(serializers.ModelSerializer):

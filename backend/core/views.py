@@ -4,12 +4,12 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    SolicitudMaterial, Maquina, ReservaMaquina
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
-    TrabajoMaestranzaSerializer, MaterialUsadoSerializer, SolicitudMaterialSerializer,
-    MaquinaSerializer, ReservaMaquinaSerializer
+    TrabajoMaestranzaSerializer, MaterialUsadoSerializer, ComentarioTrabajoSerializer,
+    SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer
 )
 
 
@@ -168,6 +168,41 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         serializer = MaterialUsadoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(trabajo=trabajo)
+        return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def agregar_comentario(self, request, pk=None):
+        """
+        Chat/notas entre el cliente y el admin sobre un trabajo ya aprobado.
+        get_queryset ya limita qué trabajos puede ver cada rol, así que si
+        el cliente llega aquí es porque el trabajo es suyo.
+        """
+        trabajo = self.get_object()
+        user = request.user
+
+        if user.rol not in ['ADMIN', 'CLIENTE']:
+            return Response({'error': 'No autorizado'}, status=403)
+
+        if not trabajo.aprobado:
+            return Response({'error': 'El trabajo todavía no ha sido aprobado'}, status=400)
+
+        mensaje = (request.data.get('mensaje') or '').strip()
+        if not mensaje:
+            return Response({'error': 'Escribe un mensaje'}, status=400)
+
+        responsable_obj = None
+        if user.rol == 'CLIENTE':
+            responsable_id = request.data.get('responsable')
+            if not responsable_id:
+                return Response({'error': 'Selecciona quién de tu empresa está comentando'}, status=400)
+            try:
+                responsable_obj = Responsable.objects.get(id=responsable_id, empresa=user.empresa)
+            except Responsable.DoesNotExist:
+                return Response({'error': 'Responsable inválido'}, status=400)
+
+        ComentarioTrabajo.objects.create(
+            trabajo=trabajo, autor=user, responsable=responsable_obj, mensaje=mensaje
+        )
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
 

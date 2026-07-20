@@ -45,7 +45,9 @@ export default function AdminUsuarios() {
       }
       setMostrarForm(false)
       setEditando(null)
+      // Si se creó una empresa nueva desde el formulario, esto la trae al filtro.
       cargarUsuarios()
+      cargarEmpresas()
     } catch (err) {
       alert('Error al guardar: revisa que el usuario no exista ya')
     }
@@ -133,7 +135,7 @@ export default function AdminUsuarios() {
             onClick={() => setMostrarForm(true)}
             className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium whitespace-nowrap"
           >
-            + Nuevo usuario
+            + Nueva empresa
           </button>
         </div>
       </div>

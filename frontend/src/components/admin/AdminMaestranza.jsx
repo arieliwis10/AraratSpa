@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   getTrabajos, actualizarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
-  getSolicitudesMaterial, hayEnBodega, enviarACompras
+  getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario
 } from '../../api/maestranza'
 import { getUsuarios } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
@@ -15,6 +15,8 @@ export default function AdminMaestranza() {
   const [nuevoMaterial, setNuevoMaterial] = useState({ nombre: '', cantidad: '' })
   const [cargando, setCargando] = useState(true)
   const [solicitudesRevision, setSolicitudesRevision] = useState([])
+  const [comentarioTexto, setComentarioTexto] = useState({})
+  const [enviandoComentario, setEnviandoComentario] = useState(null)
 
   useEffect(() => {
     cargarUsuarios()
@@ -121,6 +123,25 @@ export default function AdminMaestranza() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al agregar el material')
+    }
+  }
+
+  function handleComentarioChange(trabajoId, valor) {
+    setComentarioTexto((prev) => ({ ...prev, [trabajoId]: valor }))
+  }
+
+  async function handleEnviarComentario(trabajoId) {
+    const mensaje = (comentarioTexto[trabajoId] || '').trim()
+    if (!mensaje) return
+    setEnviandoComentario(trabajoId)
+    try {
+      await agregarComentario(trabajoId, mensaje)
+      setComentarioTexto((prev) => ({ ...prev, [trabajoId]: '' }))
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al enviar el comentario')
+    } finally {
+      setEnviandoComentario(null)
     }
   }
 
@@ -242,6 +263,56 @@ export default function AdminMaestranza() {
               </div>
             )}
 
+            {/* Comentarios: solo una vez que el trabajo fue aprobado */}
+            {t.aprobado && (
+              <div className="mb-3 border-t pt-3">
+                <div className="flex justify-between items-center mb-2">
+                  <p className="text-xs font-bold text-dark">Comentarios</p>
+                  <button onClick={cargarTrabajos} className="text-xs text-primary hover:underline">
+                    🔄 Actualizar
+                  </button>
+                </div>
+
+                {t.comentarios?.length > 0 ? (
+                  <div className="flex flex-col gap-2 mb-2 max-h-48 overflow-y-auto">
+                    {t.comentarios.map((c) => (
+                      <div key={c.id} className="bg-gray-50 rounded p-2 text-sm">
+                        <p className="text-xs font-medium text-dark">
+                          {c.autor_nombre}
+                          {c.responsable_nombre && (
+                            <span className="text-gray-400 font-normal"> — encargado: {c.responsable_nombre}</span>
+                          )}{' '}
+                          <span className="text-gray-400 font-normal">
+                            ({c.autor_rol === 'ADMIN' ? 'Admin' : 'Cliente'})
+                          </span>
+                        </p>
+                        <p className="text-gray-700">{c.mensaje}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 mb-2">Todavía no hay comentarios.</p>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    value={comentarioTexto[t.id] || ''}
+                    onChange={(e) => handleComentarioChange(t.id, e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleEnviarComentario(t.id)}
+                    placeholder="Responde al cliente..."
+                    className="flex-1 border rounded p-2 text-sm"
+                  />
+                  <button
+                    onClick={() => handleEnviarComentario(t.id)}
+                    disabled={enviandoComentario === t.id}
+                    className="bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
+                  >
+                    Enviar
+                  </button>
+                </div>
+              </div>
+            )}
+
             {estaEnEdicion ? (
               <div className="border-t pt-3 mt-2 flex flex-col gap-3 bg-gray-50 -mx-4 -mb-4 p-4 rounded-b-lg">
                 <div className="grid grid-cols-2 gap-3">
@@ -313,7 +384,7 @@ export default function AdminMaestranza() {
                       className="border rounded p-2 text-sm"
                     />
                     <input
-                      type="number" step="0.01" placeholder="Cantidad"
+                      placeholder="Cantidad (ej: 5 m, 2 kg, 3 planchas)"
                       value={nuevoMaterial.cantidad}
                       onChange={(e) => setNuevoMaterial({ ...nuevoMaterial, cantidad: e.target.value })}
                       className="border rounded p-2 text-sm"

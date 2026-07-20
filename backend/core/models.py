@@ -104,11 +104,30 @@ class TrabajoMaestranza(models.Model):
 class MaterialUsado(models.Model):
     trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='materiales')
     nombre = models.CharField(max_length=200)
-    cantidad = models.DecimalField(max_digits=10, decimal_places=2)
+    cantidad = models.CharField(max_length=50)  # texto libre, ej: "5 m", "2 kg", "3 planchas"
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.nombre} ({self.cantidad})"
+
+
+class ComentarioTrabajo(models.Model):
+    """Mensajes/notas entre cliente y admin sobre un trabajo, una vez aprobado."""
+    trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='comentarios')
+    autor = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='comentarios_trabajo')
+    # Qué persona de la empresa (no necesariamente quien tiene el login) escribió el comentario.
+    # Solo aplica a comentarios de clientes; para el admin queda en None.
+    responsable = models.ForeignKey(
+        Responsable, on_delete=models.SET_NULL, null=True, blank=True, related_name='comentarios_trabajo'
+    )
+    mensaje = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.autor.username}: {self.mensaje[:30]}"
 
 
 class SolicitudMaterial(models.Model):

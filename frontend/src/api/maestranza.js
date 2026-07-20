@@ -18,3 +18,5 @@ export const hayEnBodega = (id) => api.patch(`solicitudes-material/${id}/hay_en_
 export const enviarACompras = (id) => api.patch(`solicitudes-material/${id}/enviar_a_compras/`)
 export const marcarMaterialRecibido = (id, lugarCompra) =>
   api.patch(`solicitudes-material/${id}/marcar_recibido/`, { lugar_compra: lugarCompra })
+export const agregarComentario = (id, mensaje) =>
+  api.post(`trabajos-maestranza/${id}/agregar_comentario/`, { mensaje })

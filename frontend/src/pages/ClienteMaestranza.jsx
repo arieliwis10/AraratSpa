@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getTrabajos, crearTrabajo, elegirEntrega } from '../api/maestranza'
+import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario } from '../api/maestranza'
+import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
@@ -80,9 +81,17 @@ export default function ClienteMaestranza() {
   const [trabajos, setTrabajos] = useState([])
   const [categoriaActiva, setCategoriaActiva] = useState(null)
   const [cargando, setCargando] = useState(true)
+  const [comentarioTexto, setComentarioTexto] = useState({})
+  const [enviandoComentario, setEnviandoComentario] = useState(null)
+  const [responsables, setResponsables] = useState([])
+  const [responsableActivo, setResponsableActivo] = useState('')
 
   useEffect(() => {
     cargarTrabajos()
+    getResponsables().then((res) => {
+      setResponsables(res.data)
+      if (res.data.length === 1) setResponsableActivo(res.data[0].id)
+    })
   }, [])
 
   async function cargarTrabajos() {
@@ -102,6 +111,29 @@ export default function ClienteMaestranza() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al crear el trabajo')
+    }
+  }
+
+  function handleComentarioChange(trabajoId, valor) {
+    setComentarioTexto((prev) => ({ ...prev, [trabajoId]: valor }))
+  }
+
+  async function handleEnviarComentario(trabajoId) {
+    const mensaje = (comentarioTexto[trabajoId] || '').trim()
+    if (!mensaje) return
+    if (!responsableActivo) {
+      alert('Elige quién de la empresa está comentando')
+      return
+    }
+    setEnviandoComentario(trabajoId)
+    try {
+      await agregarComentario(trabajoId, mensaje, responsableActivo)
+      setComentarioTexto((prev) => ({ ...prev, [trabajoId]: '' }))
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al enviar el comentario')
+    } finally {
+      setEnviandoComentario(null)
     }
   }
 
@@ -153,6 +185,23 @@ export default function ClienteMaestranza() {
 
             <div>
               <h2 className="text-dark font-medium mb-3">Tus trabajos</h2>
+
+              {responsables.length > 1 && (
+                <div className="bg-white rounded-lg shadow p-3 mb-3 flex items-center gap-2">
+                  <label className="text-xs font-medium text-dark whitespace-nowrap">Comentando como:</label>
+                  <select
+                    value={responsableActivo}
+                    onChange={(e) => setResponsableActivo(e.target.value)}
+                    className="border rounded p-1.5 text-sm flex-1"
+                  >
+                    <option value="">Elige quién eres</option>
+                    {responsables.map((r) => (
+                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {cargando ? (
                 <p className="text-dark">Cargando...</p>
               ) : trabajos.length === 0 ? (
@@ -195,6 +244,55 @@ export default function ClienteMaestranza() {
                               <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+
+                      {/* Comentarios: solo una vez que el admin aprobó el trabajo */}
+                      {t.aprobado && (
+                        <div className="mt-3 border-t pt-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <p className="text-xs font-bold text-dark">
+                              Comentarios — pídele al admin lo que te haya faltado agregar
+                            </p>
+                            <button onClick={cargarTrabajos} className="text-xs text-primary hover:underline whitespace-nowrap">
+                              🔄 Actualizar
+                            </button>
+                          </div>
+
+                          {t.comentarios?.length > 0 ? (
+                            <div className="flex flex-col gap-2 mb-2 max-h-48 overflow-y-auto">
+                              {t.comentarios.map((c) => (
+                                <div key={c.id} className="bg-gray-50 rounded p-2 text-sm">
+                                  <p className="text-xs font-medium text-dark">
+                                    {c.autor_rol === 'ADMIN' ? c.autor_nombre : (c.responsable_nombre || 'Tú')}
+                                    {c.autor_rol === 'ADMIN' && (
+                                      <span className="text-gray-400 font-normal"> (Admin)</span>
+                                    )}
+                                  </p>
+                                  <p className="text-gray-700">{c.mensaje}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 mb-2">Todavía no hay comentarios.</p>
+                          )}
+
+                          <div className="flex gap-2">
+                            <input
+                              value={comentarioTexto[t.id] || ''}
+                              onChange={(e) => handleComentarioChange(t.id, e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleEnviarComentario(t.id)}
+                              placeholder="Escribe lo que te faltó agregar..."
+                              className="flex-1 border rounded p-2 text-sm"
+                            />
+                            <button
+                              onClick={() => handleEnviarComentario(t.id)}
+                              disabled={enviandoComentario === t.id}
+                              className="bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
+                            >
+                              Enviar
+                            </button>
+                          </div>
                         </div>
                       )}
 
