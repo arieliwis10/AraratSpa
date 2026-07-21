@@ -1,8 +1,7 @@
 export const CATEGORIAS = [
-  { valor: 'SOLDADURA', etiqueta: 'Soldadura', icono: '🔥' },
-  { valor: 'FLEXIBLES', etiqueta: 'Flexibles hidráulicos', icono: '💧' },
+  { valor: 'FLEXIBLES', etiqueta: 'Flexibles hidráulicos', imagen: '/categorias/flexibles.png' },
   { valor: 'TORNO', etiqueta: 'Torno mecánico', icono: '⚙️' },
-  { valor: 'INSUMOS', etiqueta: 'Insumos ferretería', icono: '🔩' },
+  { valor: 'SOLDADURA', etiqueta: 'Soldadura', icono: '🔥' },
   { valor: 'REPUESTOS', etiqueta: 'Repuestos industriales', icono: '🛠️' },
-  
+  { valor: 'INSUMOS', etiqueta: 'Insumos ferretería', icono: '🔩' },
 ]

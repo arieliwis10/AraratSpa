@@ -88,10 +88,7 @@ export default function ClienteMaestranza() {
 
   useEffect(() => {
     cargarTrabajos()
-    getResponsables().then((res) => {
-      setResponsables(res.data)
-      if (res.data.length === 1) setResponsableActivo(res.data[0].id)
-    })
+    getResponsables().then((res) => setResponsables(res.data))
   }, [])
 
   async function cargarTrabajos() {
@@ -176,7 +173,11 @@ export default function ClienteMaestranza() {
                     onClick={() => setCategoriaActiva(cat)}
                     className="bg-white rounded-lg shadow p-4 flex flex-col items-center gap-2 hover:shadow-md hover:-translate-y-0.5 transition"
                   >
-                    <span className="text-3xl">{cat.icono}</span>
+                    {cat.imagen ? (
+                      <img src={cat.imagen} alt={cat.etiqueta} className="w-30 h-30 object-contain" />
+                    ) : (
+                      <span className="text-3xl">{cat.icono}</span>
+                    )}
                     <span className="text-xs font-medium text-dark text-center">{cat.etiqueta}</span>
                   </button>
                 ))}
@@ -186,7 +187,7 @@ export default function ClienteMaestranza() {
             <div>
               <h2 className="text-dark font-medium mb-3">Tus trabajos</h2>
 
-              {responsables.length > 1 && (
+              {responsables.length > 0 && (
                 <div className="bg-white rounded-lg shadow p-3 mb-3 flex items-center gap-2">
                   <label className="text-xs font-medium text-dark whitespace-nowrap">Comentando como:</label>
                   <select
@@ -277,17 +278,24 @@ export default function ClienteMaestranza() {
                             <p className="text-xs text-gray-400 mb-2">Todavía no hay comentarios.</p>
                           )}
 
+                          {responsables.length === 0 && (
+                            <p className="text-xs text-danger mb-2">
+                              Tu empresa todavía no tiene responsables cargados. Pide al administrador que agregue uno para poder comentar.
+                            </p>
+                          )}
+
                           <div className="flex gap-2">
                             <input
                               value={comentarioTexto[t.id] || ''}
                               onChange={(e) => handleComentarioChange(t.id, e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && handleEnviarComentario(t.id)}
-                              placeholder="Escribe lo que te faltó agregar..."
-                              className="flex-1 border rounded p-2 text-sm"
+                              placeholder={responsableActivo ? "Escribe lo que te faltó agregar..." : "Elige quién eres arriba para poder escribir"}
+                              disabled={!responsableActivo}
+                              className="flex-1 border rounded p-2 text-sm disabled:bg-gray-100"
                             />
                             <button
                               onClick={() => handleEnviarComentario(t.id)}
-                              disabled={enviandoComentario === t.id}
+                              disabled={enviandoComentario === t.id || !responsableActivo}
                               className="bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
                             >
                               Enviar
