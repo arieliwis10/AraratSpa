@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.core.mail import send_mail
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
@@ -16,6 +17,40 @@ from .serializers import (
 class EsAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
+
+
+def _notificar_responsables(trabajo):
+    """
+    Envía un correo a todos los responsables de la empresa del cliente
+    cuando un trabajo se marca como Terminado. Si algo falla (SMTP caído,
+    sin responsables con email, etc.) no bloquea el flujo del trabajo.
+    """
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    if not empresa:
+        return
+
+    responsables_con_email = empresa.responsables.exclude(email__isnull=True).exclude(email='')
+    if not responsables_con_email.exists():
+        return
+
+    destinatarios = [r.email for r in responsables_con_email]
+
+    try:
+        send_mail(
+            subject=f'Trabajo #{trabajo.correlativo} completado — Ararat',
+            message=(
+                f'Hola,\n\n'
+                f'El trabajo "{trabajo.get_categoria_display()}" #{trabajo.correlativo} ya está terminado.\n\n'
+                f'Descripción: {trabajo.descripcion}\n\n'
+                f'Ingresa al sistema para elegir retiro o delivery.\n\n'
+                f'Ararat Estructuras Metálicas'
+            ),
+            from_email=None,  # usa DEFAULT_FROM_EMAIL de settings.py
+            recipient_list=destinatarios,
+            fail_silently=True,
+        )
+    except Exception:
+        pass
 
 
 class EmpresaViewSet(viewsets.ModelViewSet):
@@ -71,9 +106,9 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.rol == 'ADMIN':
             qs = TrabajoMaestranza.objects.all()
-            cliente_id = self.request.query_params.get('cliente')
-            if cliente_id:
-                qs = qs.filter(cliente_id=cliente_id)
+            empresa_id = self.request.query_params.get('empresa')
+            if empresa_id:
+                qs = qs.filter(cliente__empresa_id=empresa_id)
             return qs.order_by('-created_at')
         elif user.rol == 'TRABAJADOR':
             return TrabajoMaestranza.objects.filter(asignado_a=user).order_by('-created_at')
@@ -121,6 +156,7 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         trabajo.estado = 'TERMINADO'
         trabajo.avance = 100
         trabajo.save()
+        _notificar_responsables(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
@@ -243,9 +279,12 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
         solicitud.save()
         return Response(SolicitudMaterialSerializer(solicitud).data)
 
-    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def marcar_recibido(self, request, pk=None):
         solicitud = self.get_object()
+        user = request.user
+        if user.rol != 'ADMIN' and solicitud.trabajo.asignado_a_id != user.id:
+            return Response({'error': 'No autorizado'}, status=403)
         lugar_compra = request.data.get('lugar_compra', '')
         self._resolver(solicitud, lugar_compra=lugar_compra)
         return Response(SolicitudMaterialSerializer(solicitud).data)

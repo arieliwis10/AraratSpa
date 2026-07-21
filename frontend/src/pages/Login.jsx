@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import fondoLogin from '../assets/fondo-login.jpg'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -27,17 +28,23 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark px-4">
-    <form
-        onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm border-t-4 border-primary"
+    <div
+      className="relative min-h-screen w-full flex items-center justify-center px-4 bg-dark bg-cover bg-center"
+      style={{ backgroundImage: `url(${fondoLogin})` }}
     >
+      {/* Overlay oscuro para que la tarjeta blanca siga contrastando bien sobre cualquier imagen */}
+      <div className="absolute inset-0 bg-black/50" />
+
+      <form
+        onSubmit={handleSubmit}
+        className="relative z-10 bg-white p-8 rounded-lg shadow-md w-full max-w-sm border-t-4 border-primary"
+      >
         <h1 className="text-2xl font-bold mb-6 text-center text-dark">Iniciar sesión</h1>
 
         {error && (
-        <div className="bg-danger/10 text-danger p-2 rounded mb-4 text-sm border border-danger/30">
+          <div className="bg-danger/10 text-danger p-2 rounded mb-4 text-sm border border-danger/30">
             {error}
-        </div>
+          </div>
         )}
 
         <label className="block text-sm font-medium mb-1">Usuario</label>
@@ -59,11 +66,11 @@ export default function Login() {
         />
 
         <button
-        type="submit"
-        disabled={cargando}
-        className="w-full bg-primary text-white py-2 rounded hover:bg-primary-light disabled:opacity-50 font-medium"
+          type="submit"
+          disabled={cargando}
+          className="w-full bg-primary text-white py-2 rounded hover:bg-primary-light disabled:opacity-50 font-medium"
         >
-        {cargando ? 'Ingresando...' : 'Ingresar'}
+          {cargando ? 'Ingresando...' : 'Ingresar'}
         </button>
       </form>
     </div>

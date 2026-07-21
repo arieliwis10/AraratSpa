@@ -8,7 +8,7 @@ from .models import (
 class ResponsableSerializer(serializers.ModelSerializer):
     class Meta:
         model = Responsable
-        fields = ['id', 'empresa', 'nombre', 'telefono']
+        fields = ['id', 'empresa', 'nombre', 'telefono', 'email']
 
 
 class EmpresaSerializer(serializers.ModelSerializer):

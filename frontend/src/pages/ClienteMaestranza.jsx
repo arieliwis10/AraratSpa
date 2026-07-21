@@ -6,6 +6,7 @@ import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
+import fondoPanel from '../assets/fondo-panel.jpg'
 
 function SelectorEntrega({ trabajo, onElegido }) {
   const [modalidad, setModalidad] = useState('RETIRO')
@@ -85,6 +86,8 @@ export default function ClienteMaestranza() {
   const [enviandoComentario, setEnviandoComentario] = useState(null)
   const [responsables, setResponsables] = useState([])
   const [responsableActivo, setResponsableActivo] = useState('')
+  const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [expandido, setExpandido] = useState({})
 
   useEffect(() => {
     cargarTrabajos()
@@ -111,6 +114,10 @@ export default function ClienteMaestranza() {
     }
   }
 
+  function toggleExpandido(id) {
+    setExpandido((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
   function handleComentarioChange(trabajoId, valor) {
     setComentarioTexto((prev) => ({ ...prev, [trabajoId]: valor }))
   }
@@ -134,6 +141,9 @@ export default function ClienteMaestranza() {
     }
   }
 
+  const trabajosHistorial = trabajos.filter((t) => t.estado === 'TERMINADO' && t.modalidad_entrega)
+  const trabajosActivos = trabajos.filter((t) => !(t.estado === 'TERMINADO' && t.modalidad_entrega))
+
   return (
     <div className="min-h-screen bg-gray-100 w-full">
       <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
@@ -154,7 +164,12 @@ export default function ClienteMaestranza() {
         </div>
       </header>
 
-      <main className="w-full max-w-4xl mx-auto p-4 md:p-8">
+      <main
+        className="relative w-full min-h-[calc(100dvh-64px)] bg-gray-100 bg-cover bg-center bg-fixed"
+        style={{ backgroundImage: `url(${fondoPanel})` }}
+      >
+        {/* Fondo de imagen, sin overlay */}
+        <div className="relative z-10 max-w-4xl mx-auto p-4 md:p-8">
         {categoriaActiva ? (
           <FormularioTrabajo
             categoria={categoriaActiva.valor}
@@ -174,7 +189,7 @@ export default function ClienteMaestranza() {
                     className="bg-white rounded-lg shadow p-4 flex flex-col items-center gap-2 hover:shadow-md hover:-translate-y-0.5 transition"
                   >
                     {cat.imagen ? (
-                      <img src={cat.imagen} alt={cat.etiqueta} className="w-30 h-30 object-contain" />
+                      <img src={cat.imagen} alt={cat.etiqueta} className="w-10 h-10 object-contain" />
                     ) : (
                       <span className="text-3xl">{cat.icono}</span>
                     )}
@@ -183,6 +198,66 @@ export default function ClienteMaestranza() {
                 ))}
               </div>
             </div>
+
+            {/* Carpeta Terminados: justo después de las categorías */}
+            {trabajosHistorial.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setMostrarHistorial(!mostrarHistorial)}
+                  className="text-primary text-sm font-medium hover:underline"
+                >
+                  {mostrarHistorial ? '▲ Ocultar' : '▼ Ver'} carpeta Terminados ({trabajosHistorial.length})
+                </button>
+
+                {mostrarHistorial && (
+                  <div className="flex flex-col gap-3 mt-3">
+                    {trabajosHistorial.map((t) => {
+                      const estaExpandido = Boolean(expandido[t.id])
+                      return (
+                        <div key={t.id} className="bg-white rounded-lg shadow p-4 opacity-80">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandido(t.id)}
+                            className="w-full flex justify-between items-start text-left gap-3"
+                          >
+                            <div className="flex gap-3 min-w-0">
+                              <span className="text-xs font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 h-fit shrink-0">
+                                #{t.correlativo}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
+                                <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : '✅ Delivery confirmado'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <BadgeEstado estado={t.estado} />
+                              <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
+                            </div>
+                          </button>
+
+                          {estaExpandido && (
+                            <div className="mt-3 pt-3 border-t">
+                              <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
+                                <span>Centro de costo: {t.centro_costo}</span>
+                              </div>
+                              <div className="bg-green-50 text-green-700 text-sm font-medium rounded p-2 text-center">
+                                {t.modalidad_entrega === 'RETIRO'
+                                  ? '✅ Confirmado: Retiro en local'
+                                  : `✅ Confirmado: Delivery a ${t.direccion_entrega}`}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <h2 className="text-dark font-medium mb-3">Tus trabajos</h2>
@@ -209,121 +284,136 @@ export default function ClienteMaestranza() {
                 <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                   Todavía no has creado ningún trabajo.
                 </div>
+              ) : trabajosActivos.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  No tienes trabajos activos en este momento. Revisa tu carpeta Terminados arriba.
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {trabajos.map((t) => (
-                    <div key={t.id} className="bg-white rounded-lg shadow p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <span className="text-xs font-bold text-primary uppercase">
-                            {t.categoria_display} #{t.correlativo}
-                          </span>
-                          <p className="text-sm text-gray-600 mt-1">{t.descripcion}</p>
-                        </div>
-                        <BadgeEstado estado={t.estado} />
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
-                        <span>Centro de costo: {t.centro_costo}</span>
-                        {t.tiempo_entrega && <span>Entrega estimada: {t.tiempo_entrega}</span>}
-                        <span>Avance: {t.avance}%</span>
-                      </div>
-
-                      {t.foto && (
-                        <img
-                          src={t.foto}
-                          alt="evidencia"
-                          className="mt-2 w-20 h-20 object-cover rounded border"
-                        />
-                      )}
-
-                      {t.materiales?.length > 0 && (
-                        <div className="mt-3 border rounded p-2 bg-gray-50">
-                          <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
-                          <ul className="text-xs text-gray-600 list-disc pl-4">
-                            {t.materiales.map((mat) => (
-                              <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Comentarios: solo una vez que el admin aprobó el trabajo */}
-                      {t.aprobado && (
-                        <div className="mt-3 border-t pt-3">
-                          <div className="flex justify-between items-center mb-2">
-                            <p className="text-xs font-bold text-dark">
-                              Comentarios — pídele al admin lo que te haya faltado agregar
-                            </p>
-                            <button onClick={cargarTrabajos} className="text-xs text-primary hover:underline whitespace-nowrap">
-                              🔄 Actualizar
-                            </button>
-                          </div>
-
-                          {t.comentarios?.length > 0 ? (
-                            <div className="flex flex-col gap-2 mb-2 max-h-48 overflow-y-auto">
-                              {t.comentarios.map((c) => (
-                                <div key={c.id} className="bg-gray-50 rounded p-2 text-sm">
-                                  <p className="text-xs font-medium text-dark">
-                                    {c.autor_rol === 'ADMIN' ? c.autor_nombre : (c.responsable_nombre || 'Tú')}
-                                    {c.autor_rol === 'ADMIN' && (
-                                      <span className="text-gray-400 font-normal"> (Admin)</span>
-                                    )}
-                                  </p>
-                                  <p className="text-gray-700">{c.mensaje}</p>
-                                </div>
-                              ))}
+                  {trabajosActivos.map((t) => {
+                    const estaExpandido = Boolean(expandido[t.id])
+                    return (
+                      <div key={t.id} className="bg-white rounded-lg shadow p-4">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpandido(t.id)}
+                          className="w-full flex justify-between items-start text-left gap-3"
+                        >
+                          <div className="flex gap-3 min-w-0">
+                            <span className="text-xs font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 h-fit shrink-0">
+                              #{t.correlativo}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
+                              <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
+                                <span>Avance: {t.avance}%</span>
+                                {t.tiempo_entrega && <span>Entrega estimada: {t.tiempo_entrega}</span>}
+                              </div>
+                              {t.estado === 'TERMINADO' && !t.modalidad_entrega && (
+                                <p className="text-xs text-primary font-medium mt-1">🎉 Listo — elige cómo recibirlo</p>
+                              )}
                             </div>
-                          ) : (
-                            <p className="text-xs text-gray-400 mb-2">Todavía no hay comentarios.</p>
-                          )}
-
-                          {responsables.length === 0 && (
-                            <p className="text-xs text-danger mb-2">
-                              Tu empresa todavía no tiene responsables cargados. Pide al administrador que agregue uno para poder comentar.
-                            </p>
-                          )}
-
-                          <div className="flex gap-2">
-                            <input
-                              value={comentarioTexto[t.id] || ''}
-                              onChange={(e) => handleComentarioChange(t.id, e.target.value)}
-                              onKeyDown={(e) => e.key === 'Enter' && handleEnviarComentario(t.id)}
-                              placeholder={responsableActivo ? "Escribe lo que te faltó agregar..." : "Elige quién eres arriba para poder escribir"}
-                              disabled={!responsableActivo}
-                              className="flex-1 border rounded p-2 text-sm disabled:bg-gray-100"
-                            />
-                            <button
-                              onClick={() => handleEnviarComentario(t.id)}
-                              disabled={enviandoComentario === t.id || !responsableActivo}
-                              className="bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
-                            >
-                              Enviar
-                            </button>
                           </div>
-                        </div>
-                      )}
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <BadgeEstado estado={t.estado} />
+                            <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
+                          </div>
+                        </button>
 
-                      {/* Trabajo terminado, todavía sin elegir modalidad */}
-                      {t.estado === 'TERMINADO' && !t.modalidad_entrega && (
-                        <SelectorEntrega trabajo={t} onElegido={cargarTrabajos} />
-                      )}
+                        {estaExpandido && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
+                            <p className="text-xs text-gray-500 mb-3">Centro de costo: {t.centro_costo}</p>
 
-                      {/* Trabajo terminado, ya con modalidad confirmada */}
-                      {t.estado === 'TERMINADO' && t.modalidad_entrega && (
-                        <div className="mt-3 bg-green-50 text-green-700 text-sm font-medium rounded p-2 text-center">
-                          {t.modalidad_entrega === 'RETIRO'
-                            ? '✅ Confirmado: Retiro en local'
-                            : `✅ Confirmado: Delivery a ${t.direccion_entrega}`}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                            {t.foto && (
+                              <img
+                                src={t.foto}
+                                alt="evidencia"
+                                className="mb-3 w-20 h-20 object-cover rounded border"
+                              />
+                            )}
+
+                            {t.materiales?.length > 0 && (
+                              <div className="mb-3 border rounded p-2 bg-gray-50">
+                                <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
+                                <ul className="text-xs text-gray-600 list-disc pl-4">
+                                  {t.materiales.map((mat) => (
+                                    <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {t.aprobado && (
+                              <div className="mb-3 border-t pt-3">
+                                <div className="flex justify-between items-center mb-2">
+                                  <p className="text-xs font-bold text-dark">
+                                    Comentarios — pídele al admin lo que te haya faltado agregar
+                                  </p>
+                                  <button onClick={cargarTrabajos} className="text-xs text-primary hover:underline whitespace-nowrap">
+                                    🔄 Actualizar
+                                  </button>
+                                </div>
+
+                                {t.comentarios?.length > 0 ? (
+                                  <div className="flex flex-col gap-2 mb-2 max-h-48 overflow-y-auto">
+                                    {t.comentarios.map((c) => (
+                                      <div key={c.id} className="bg-gray-50 rounded p-2 text-sm">
+                                        <p className="text-xs font-medium text-dark">
+                                          {c.autor_rol === 'ADMIN' ? c.autor_nombre : (c.responsable_nombre || 'Tú')}
+                                          {c.autor_rol === 'ADMIN' && (
+                                            <span className="text-gray-400 font-normal"> (Admin)</span>
+                                          )}
+                                        </p>
+                                        <p className="text-gray-700">{c.mensaje}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-gray-400 mb-2">Todavía no hay comentarios.</p>
+                                )}
+
+                                {responsables.length === 0 && (
+                                  <p className="text-xs text-danger mb-2">
+                                    Tu empresa todavía no tiene responsables cargados. Pide al administrador que agregue uno para poder comentar.
+                                  </p>
+                                )}
+
+                                <div className="flex gap-2">
+                                  <input
+                                    value={comentarioTexto[t.id] || ''}
+                                    onChange={(e) => handleComentarioChange(t.id, e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleEnviarComentario(t.id)}
+                                    placeholder={responsableActivo ? "Escribe lo que te faltó agregar..." : "Elige quién eres arriba para poder escribir"}
+                                    disabled={!responsableActivo}
+                                    className="flex-1 border rounded p-2 text-sm disabled:bg-gray-100"
+                                  />
+                                  <button
+                                    onClick={() => handleEnviarComentario(t.id)}
+                                    disabled={enviandoComentario === t.id || !responsableActivo}
+                                    className="bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50"
+                                  >
+                                    Enviar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {t.estado === 'TERMINADO' && !t.modalidad_entrega && (
+                              <SelectorEntrega trabajo={t} onElegido={cargarTrabajos} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
           </div>
         )}
+        </div>
       </main>
     </div>
   )

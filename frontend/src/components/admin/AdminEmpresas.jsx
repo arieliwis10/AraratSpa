@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   getEmpresas, crearEmpresa, actualizarEmpresa, eliminarEmpresa,
-  crearResponsable, eliminarResponsable, getUsuarios
+  crearResponsable, actualizarResponsable, eliminarResponsable, getUsuarios
 } from '../../api/usuarios'
 
 export default function AdminEmpresas() {
@@ -12,7 +12,9 @@ export default function AdminEmpresas() {
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState({ nombre: '', rut: '' })
   const [empresaExpandida, setEmpresaExpandida] = useState(null)
-  const [nuevoResponsable, setNuevoResponsable] = useState({ nombre: '', telefono: '' })
+  const [nuevoResponsable, setNuevoResponsable] = useState({ nombre: '', telefono: '', email: '' })
+  const [emailEdits, setEmailEdits] = useState({})
+  const [guardandoEmail, setGuardandoEmail] = useState(null)
 
   useEffect(() => {
     cargar()
@@ -66,7 +68,7 @@ export default function AdminEmpresas() {
     if (!nuevoResponsable.nombre) return
     try {
       await crearResponsable({ ...nuevoResponsable, empresa: empresaId })
-      setNuevoResponsable({ nombre: '', telefono: '' })
+      setNuevoResponsable({ nombre: '', telefono: '', email: '' })
       cargar()
     } catch (err) {
       alert('Error al agregar responsable')
@@ -77,6 +79,35 @@ export default function AdminEmpresas() {
     if (!confirm('¿Eliminar este responsable?')) return
     await eliminarResponsable(id)
     cargar()
+  }
+
+  function emailActual(responsable) {
+    return emailEdits[responsable.id] !== undefined
+      ? emailEdits[responsable.id]
+      : (responsable.email || '')
+  }
+
+  function handleEmailChange(responsableId, valor) {
+    setEmailEdits((prev) => ({ ...prev, [responsableId]: valor }))
+  }
+
+  async function handleGuardarEmail(responsableId) {
+    const nuevoEmail = emailEdits[responsableId]
+    if (nuevoEmail === undefined) return
+    setGuardandoEmail(responsableId)
+    try {
+      await actualizarResponsable(responsableId, { email: nuevoEmail })
+      setEmailEdits((prev) => {
+        const copia = { ...prev }
+        delete copia[responsableId]
+        return copia
+      })
+      cargar()
+    } catch (err) {
+      alert('Error al guardar el email')
+    } finally {
+      setGuardandoEmail(null)
+    }
   }
 
   function usuariosDeEmpresa(empresaId) {
@@ -178,15 +209,38 @@ export default function AdminEmpresas() {
                     <div>
                       <p className="text-xs font-bold text-dark mb-2">Responsables (contactos que encargan trabajos)</p>
                       <div className="flex flex-col gap-2">
-                        {emp.responsables.map((r) => (
-                          <div key={r.id} className="flex justify-between items-center bg-gray-50 rounded p-2 text-sm">
-                            <span className="text-dark">{r.nombre} {r.telefono && `— ${r.telefono}`}</span>
-                            <button onClick={() => handleEliminarResponsable(r.id)} className="text-danger text-xs hover:underline">
-                              Eliminar
-                            </button>
-                          </div>
-                        ))}
-                        <div className="grid grid-cols-2 gap-2 mt-1">
+                        {emp.responsables.map((r) => {
+                          const emailModificado = emailEdits[r.id] !== undefined && emailEdits[r.id] !== (r.email || '')
+                          return (
+                            <div key={r.id} className="bg-gray-50 rounded p-2 text-sm">
+                              <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-dark">{r.nombre} {r.telefono && `— ${r.telefono}`}</span>
+                                <button onClick={() => handleEliminarResponsable(r.id)} className="text-danger text-xs hover:underline">
+                                  Eliminar
+                                </button>
+                              </div>
+                              <div className="flex gap-2">
+                                <input
+                                  type="email"
+                                  placeholder="Email (para notificaciones de trabajos terminados)"
+                                  value={emailActual(r)}
+                                  onChange={(e) => handleEmailChange(r.id, e.target.value)}
+                                  className="flex-1 border rounded p-1.5 text-xs"
+                                />
+                                {emailModificado && (
+                                  <button
+                                    onClick={() => handleGuardarEmail(r.id)}
+                                    disabled={guardandoEmail === r.id}
+                                    className="bg-primary text-white px-2.5 py-1 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50 whitespace-nowrap"
+                                  >
+                                    {guardandoEmail === r.id ? 'Guardando...' : 'Guardar'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                        <div className="grid grid-cols-3 gap-2 mt-1">
                           <input
                             placeholder="Nombre responsable"
                             value={nuevoResponsable.nombre}
@@ -197,6 +251,13 @@ export default function AdminEmpresas() {
                             placeholder="Teléfono (opcional)"
                             value={nuevoResponsable.telefono}
                             onChange={(e) => setNuevoResponsable({ ...nuevoResponsable, telefono: e.target.value })}
+                            className="border rounded p-2 text-sm"
+                          />
+                          <input
+                            type="email"
+                            placeholder="Email (opcional)"
+                            value={nuevoResponsable.email}
+                            onChange={(e) => setNuevoResponsable({ ...nuevoResponsable, email: e.target.value })}
                             className="border rounded p-2 text-sm"
                           />
                         </div>

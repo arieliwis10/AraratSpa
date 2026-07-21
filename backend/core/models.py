@@ -14,6 +14,7 @@ class Responsable(models.Model):
     empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='responsables')
     nombre = models.CharField(max_length=150)
     telefono = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.nombre} ({self.empresa.nombre})"

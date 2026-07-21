@@ -16,7 +16,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
   // Por defecto, si es un registro nuevo, arrancamos en modo "crear empresa nueva".
   const [creandoEmpresa, setCreandoEmpresa] = useState(!usuarioInicial)
   const [nuevaEmpresa, setNuevaEmpresa] = useState({ nombre: '', rut: '' })
-  const [responsables, setResponsables] = useState([{ nombre: '', telefono: '' }])
+  const [responsables, setResponsables] = useState([{ nombre: '', telefono: '', email: '' }])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -54,7 +54,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
   }
 
   function agregarResponsable() {
-    setResponsables((prev) => [...prev, { nombre: '', telefono: '' }])
+    setResponsables((prev) => [...prev, { nombre: '', telefono: '', email: '' }])
   }
 
   function quitarResponsable(idx) {
@@ -211,7 +211,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                 <p className="text-sm font-bold text-dark mb-2">Responsables (contactos que encargan trabajos)</p>
                 <div className="flex flex-col gap-2">
                   {responsables.map((r, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
                       <input
                         placeholder="Nombre responsable"
                         value={r.nombre}
@@ -222,6 +222,13 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                         placeholder="Teléfono (opcional)"
                         value={r.telefono}
                         onChange={(e) => handleResponsableChange(idx, 'telefono', e.target.value)}
+                        className="border rounded p-2 text-sm"
+                      />
+                      <input
+                        type="email"
+                        placeholder="Email (opcional)"
+                        value={r.email}
+                        onChange={(e) => handleResponsableChange(idx, 'email', e.target.value)}
                         className="border rounded p-2 text-sm"
                       />
                       {responsables.length > 1 && (
@@ -236,6 +243,9 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                     </div>
                   ))}
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  El email es opcional, pero si lo cargas, ese responsable recibirá un correo automático cuando sus trabajos queden terminados.
+                </p>
                 <button
                   type="button"
                   onClick={agregarResponsable}
