@@ -184,7 +184,7 @@ export default function AdminMaestranza() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="bg-white rounded-lg shadow p-4">
         <label className="block text-sm font-medium mb-1 text-dark">Filtrar por empresa</label>
         <select
           value={filtroEmpresa}
@@ -200,7 +200,7 @@ export default function AdminMaestranza() {
 
       {/* Carpeta Terminados: justo después del filtro por empresa */}
       {trabajosHistorial.length > 0 && (
-        <div className="border-b pb-4">
+        <div className="bg-white rounded-lg shadow p-4">
           <button
             onClick={() => setMostrarHistorial(!mostrarHistorial)}
             className="text-primary text-sm font-medium hover:underline"
@@ -355,17 +355,29 @@ export default function AdminMaestranza() {
       {solicitudesRevision.length > 0 && (
         <div className="bg-white rounded-lg shadow border-l-4 border-danger p-4">
           <h3 className="text-sm font-bold text-danger mb-3">
-            ⚠️ {solicitudesRevision.length} retraso(s) por revisar
+            🧰 {solicitudesRevision.length} solicitud(es) de material/herramienta por revisar
           </h3>
           <div className="flex flex-col gap-3">
             {solicitudesRevision.map((s) => (
               <div key={s.id} className="bg-danger/5 rounded p-3">
-                <p className="text-xs font-bold text-primary uppercase">
-                  {s.trabajo_categoria} #{s.trabajo_correlativo}
+                {s.trabajo ? (
+                  <>
+                    <p className="text-xs font-bold text-primary uppercase">
+                      {s.trabajo_categoria} #{s.trabajo_correlativo}
+                    </p>
+                    <p className="text-sm font-medium text-dark">{s.empresa_nombre || s.cliente_nombre}</p>
+                    <p className="text-sm text-gray-600 mt-1">{s.trabajo_descripcion}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-bold text-primary uppercase">Pedido suelto (sin trabajo asociado)</p>
+                    <p className="text-sm font-medium text-dark">{s.solicitante_nombre || 'Trabajador'}</p>
+                  </>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(s.created_at).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })}
                 </p>
-                <p className="text-sm font-medium text-dark">{s.empresa_nombre || s.cliente_nombre}</p>
-                <p className="text-sm text-gray-600 mt-1">{s.trabajo_descripcion}</p>
-                {s.descripcion && <p className="text-sm text-danger mt-2 font-medium">Motivo: {s.descripcion}</p>}
+                {s.descripcion && <p className="text-sm text-danger mt-2 font-medium">Solicita: {s.descripcion}</p>}
                 <div className="flex gap-2 mt-3">
                   <button
                     onClick={() => handleBodega(s.id)}

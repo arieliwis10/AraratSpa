@@ -14,6 +14,7 @@ export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}
 export const reportarRetraso = (id, motivo) => api.patch(`trabajos-maestranza/${id}/reportar_retraso/`, { motivo })
 
 export const getSolicitudesMaterial = () => api.get('solicitudes-material/')
+export const solicitarMaterial = (data) => api.post('solicitudes-material/solicitar/', data)
 export const hayEnBodega = (id) => api.patch(`solicitudes-material/${id}/hay_en_bodega/`)
 export const enviarACompras = (id) => api.patch(`solicitudes-material/${id}/enviar_a_compras/`)
 export const marcarMaterialRecibido = (id, lugarCompra) =>

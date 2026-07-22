@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import {
   getTrabajos, actualizarProgreso, marcarCompletado, agregarMaterial, reportarRetraso,
-  marcarMaterialRecibido, getSolicitudesMaterial, hayEnBodega
+  marcarMaterialRecibido, getSolicitudesMaterial, hayEnBodega, solicitarMaterial
 } from '../api/maestranza'
 import BadgeEstado from '../components/BadgeEstado'
 import fondoPanel from '../assets/fondo-panel.jpg'
@@ -19,6 +19,9 @@ export default function DashboardTrabajador() {
   const [solicitudesRevisionPorTrabajo, setSolicitudesRevisionPorTrabajo] = useState({})
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
   const [expandido, setExpandido] = useState({})
+  const [descripcionSolicitud, setDescripcionSolicitud] = useState('')
+  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false)
+  const [solicitudEnviada, setSolicitudEnviada] = useState(false)
 
  useEffect(() => {
   cargarTrabajos()
@@ -140,6 +143,25 @@ export default function DashboardTrabajador() {
     }
   }
 
+  async function handleEnviarSolicitud() {
+    if (!descripcionSolicitud.trim()) {
+      alert('Escribe qué necesitas')
+      return
+    }
+    setEnviandoSolicitud(true)
+    try {
+      await solicitarMaterial({ descripcion: descripcionSolicitud.trim() })
+      setDescripcionSolicitud('')
+      setSolicitudEnviada(true)
+      cargarSolicitudes()
+      setTimeout(() => setSolicitudEnviada(false), 4000)
+    } catch (err) {
+      alert('Error al enviar la solicitud')
+    } finally {
+      setEnviandoSolicitud(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 w-full">
       <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
@@ -169,6 +191,30 @@ export default function DashboardTrabajador() {
 
           return (
             <>
+              {/* Solicitar herramienta o material — independiente del estado del trabajo */}
+              <div className="bg-white rounded-lg shadow p-4 mb-4">
+                <h2 className="font-bold text-dark mb-3">🧰 Solicitar herramienta o material</h2>
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={descripcionSolicitud}
+                    onChange={(e) => setDescripcionSolicitud(e.target.value)}
+                    placeholder="Ej: Necesito un taladro, no tengo brocas de 6mm..."
+                    rows={2}
+                    className="border rounded p-2 text-sm resize-none"
+                  />
+                  <button
+                    onClick={handleEnviarSolicitud}
+                    disabled={enviandoSolicitud}
+                    className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50 w-fit"
+                  >
+                    {enviandoSolicitud ? 'Enviando...' : 'Enviar solicitud'}
+                  </button>
+                  {solicitudEnviada && (
+                    <p className="text-xs text-green-700">✅ Solicitud enviada. El admin la va a revisar.</p>
+                  )}
+                </div>
+              </div>
+
               {trabajosActivos.length === 0 ? (
                 <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                   No tienes trabajos asignados por el momento.
@@ -393,7 +439,7 @@ export default function DashboardTrabajador() {
               )}
 
               {trabajosHistorial.length > 0 && (
-                <div className="mt-6">
+                <div className="mt-6 bg-white rounded-lg shadow p-4">
                   <button
                     onClick={() => setMostrarHistorial(!mostrarHistorial)}
                     className="text-primary text-sm font-medium hover:underline"
@@ -406,7 +452,7 @@ export default function DashboardTrabajador() {
                       {trabajosHistorial.map((t) => {
                         const estaExpandido = Boolean(expandido[t.id])
                         return (
-                          <div key={t.id} className="bg-white rounded-lg shadow p-4 opacity-80">
+                          <div key={t.id} className="bg-gray-50 rounded-lg shadow p-4 opacity-80">
                             <button
                               type="button"
                               onClick={() => toggleExpandido(t.id)}

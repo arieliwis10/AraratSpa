@@ -137,7 +137,18 @@ class SolicitudMaterial(models.Model):
         PENDIENTE = 'PENDIENTE', 'Pendiente de compra'
         RECIBIDO = 'RECIBIDO', 'Recibido'
 
-    trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='solicitudes_material')
+    # Opcional: solo se completa si la solicitud viene de "Reportar retraso"
+    # (anexa a un trabajo). Los pedidos sueltos de herramienta/material no
+    # llevan trabajo asociado.
+    trabajo = models.ForeignKey(
+        TrabajoMaestranza, on_delete=models.CASCADE, related_name='solicitudes_material',
+        null=True, blank=True
+    )
+    # Quién hizo el pedido — queda como evidencia junto con created_at (fecha/hora).
+    solicitante = models.ForeignKey(
+        'Usuario', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='solicitudes_material_creadas'
+    )
     descripcion = models.TextField(blank=True)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.REVISION)
     lugar_compra = models.CharField(max_length=200, blank=True)
@@ -145,7 +156,8 @@ class SolicitudMaterial(models.Model):
     resuelto_en = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
-        return f"Compra para {self.trabajo} ({self.estado})"
+        referencia = self.trabajo if self.trabajo else (self.solicitante or 'sin solicitante')
+        return f"Solicitud de {referencia} ({self.estado})"
 
 
 class Maquina(models.Model):

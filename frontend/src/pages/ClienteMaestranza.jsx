@@ -1,12 +1,37 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario } from '../api/maestranza'
 import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
 import fondoPanel from '../assets/fondo-panel.jpg'
+
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+]
+
+function mesActualISO() {
+  const fecha = new Date()
+  const yyyy = fecha.getFullYear()
+  const mm = String(fecha.getMonth() + 1).padStart(2, '0')
+  return `${yyyy}-${mm}`
+}
+
+function nombreMes(mesISO) {
+  const [yyyy, mm] = mesISO.split('-')
+  return `${MESES[parseInt(mm, 10) - 1]} ${yyyy}`
+}
+
+function anosDisponibles() {
+  const actual = new Date().getFullYear()
+  const inicio = actual - 3
+  return Array.from({ length: actual - inicio + 1 }, (_, i) => actual - i)
+}
 
 function SelectorEntrega({ trabajo, onElegido }) {
   const [modalidad, setModalidad] = useState('RETIRO')
@@ -87,6 +112,7 @@ export default function ClienteMaestranza() {
   const [responsables, setResponsables] = useState([])
   const [responsableActivo, setResponsableActivo] = useState('')
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [mesFiltro, setMesFiltro] = useState(mesActualISO())
   const [expandido, setExpandido] = useState({})
 
   useEffect(() => {
@@ -144,6 +170,48 @@ export default function ClienteMaestranza() {
   const trabajosHistorial = trabajos.filter((t) => t.estado === 'TERMINADO' && t.modalidad_entrega)
   const trabajosActivos = trabajos.filter((t) => !(t.estado === 'TERMINADO' && t.modalidad_entrega))
 
+  const trabajosHistorialDelMes = trabajosHistorial.filter((t) => {
+    if (!t.updated_at) return false
+    return t.updated_at.slice(0, 7) === mesFiltro
+  })
+
+  function generarPDFMes() {
+    const doc = new jsPDF()
+    const titulo = `Trabajos realizados — ${nombreMes(mesFiltro)}`
+
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(titulo, 14, 18)
+
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Cliente: ${usuario.username}`, 14, 25)
+
+    const filas = trabajosHistorialDelMes.map((t) => [
+      `#${t.correlativo}`,
+      t.categoria_display,
+      t.descripcion,
+      t.centro_costo,
+      t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : `Delivery: ${t.direccion_entrega}`,
+    ])
+
+    autoTable(doc, {
+      startY: 32,
+      head: [['N°', 'Categoría', 'Descripción', 'Centro de costo', 'Entrega']],
+      body: filas,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: [15, 15, 15], textColor: 255 },
+    })
+
+    if (filas.length === 0) {
+      doc.setFontSize(10)
+      doc.text('No hay trabajos terminados en este mes.', 14, 36)
+    }
+
+    doc.save(`trabajos_realizados_${mesFiltro}.pdf`)
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 w-full">
       <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
@@ -180,20 +248,20 @@ export default function ClienteMaestranza() {
         ) : (
           <div className="flex flex-col gap-6">
             <div>
-              <h2 className="text-dark font-medium mb-3">Elige una categoría</h2>
+              <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-3">Elige una categoría</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 {CATEGORIAS.map((cat) => (
                   <button
                     key={cat.valor}
                     onClick={() => setCategoriaActiva(cat)}
-                    className="bg-white rounded-lg shadow p-4 flex flex-col items-center gap-2 hover:shadow-md hover:-translate-y-0.5 transition"
+                    title={cat.etiqueta}
+                    className="bg-white rounded-lg shadow overflow-hidden hover:shadow-md hover:-translate-y-0.5 transition"
                   >
                     {cat.imagen ? (
-                      <img src={cat.imagen} alt={cat.etiqueta} className="w-10 h-10 object-contain" />
+                      <img src={cat.imagen} alt={cat.etiqueta} className="w-full h-auto block" />
                     ) : (
-                      <span className="text-3xl">{cat.icono}</span>
+                      <span className="text-3xl flex items-center justify-center w-full h-24">{cat.icono}</span>
                     )}
-                    <span className="text-xs font-medium text-dark text-center">{cat.etiqueta}</span>
                   </button>
                 ))}
               </div>
@@ -201,7 +269,7 @@ export default function ClienteMaestranza() {
 
             {/* Carpeta Terminados: justo después de las categorías */}
             {trabajosHistorial.length > 0 && (
-              <div>
+              <div className="bg-white rounded-lg shadow p-4">
                 <button
                   onClick={() => setMostrarHistorial(!mostrarHistorial)}
                   className="text-primary text-sm font-medium hover:underline"
@@ -211,10 +279,44 @@ export default function ClienteMaestranza() {
 
                 {mostrarHistorial && (
                   <div className="flex flex-col gap-3 mt-3">
-                    {trabajosHistorial.map((t) => {
+                    <div className="flex flex-wrap items-center gap-2 bg-gray-50 rounded-lg p-3">
+                      <label className="text-xs font-medium text-dark whitespace-nowrap">Filtrar por mes:</label>
+                      <select
+                        value={mesFiltro.split('-')[1]}
+                        onChange={(e) => setMesFiltro(`${mesFiltro.split('-')[0]}-${e.target.value}`)}
+                        className="border rounded p-1.5 text-sm bg-white"
+                      >
+                        {MESES.map((nombre, idx) => (
+                          <option key={idx} value={String(idx + 1).padStart(2, '0')}>{nombre}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={mesFiltro.split('-')[0]}
+                        onChange={(e) => setMesFiltro(`${e.target.value}-${mesFiltro.split('-')[1]}`)}
+                        className="border rounded p-1.5 text-sm bg-white"
+                      >
+                        {anosDisponibles().map((anio) => (
+                          <option key={anio} value={anio}>{anio}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={generarPDFMes}
+                        className="ml-auto bg-dark text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-dark-soft whitespace-nowrap"
+                      >
+                        📄 Descargar PDF de {nombreMes(mesFiltro)}
+                      </button>
+                    </div>
+
+                    {trabajosHistorialDelMes.length === 0 && (
+                      <div className="bg-gray-50 rounded-lg p-6 text-center text-gray-500 text-sm">
+                        No tienes trabajos terminados en {nombreMes(mesFiltro)}.
+                      </div>
+                    )}
+
+                    {trabajosHistorialDelMes.map((t) => {
                       const estaExpandido = Boolean(expandido[t.id])
                       return (
-                        <div key={t.id} className="bg-white rounded-lg shadow p-4 opacity-80">
+                        <div key={t.id} className="bg-gray-50 rounded-lg shadow p-4 opacity-80">
                           <button
                             type="button"
                             onClick={() => toggleExpandido(t.id)}
@@ -238,6 +340,7 @@ export default function ClienteMaestranza() {
                             </div>
                           </button>
 
+
                           {estaExpandido && (
                             <div className="mt-3 pt-3 border-t">
                               <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
@@ -260,7 +363,7 @@ export default function ClienteMaestranza() {
             )}
 
             <div>
-              <h2 className="text-dark font-medium mb-3">Tus trabajos</h2>
+              <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-3">Tus trabajos</h2>
 
               {responsables.length > 0 && (
                 <div className="bg-white rounded-lg shadow p-3 mb-3 flex items-center gap-2">

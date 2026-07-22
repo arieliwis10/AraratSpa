@@ -77,19 +77,21 @@ class ComentarioTrabajoSerializer(serializers.ModelSerializer):
 
 
 class SolicitudMaterialSerializer(serializers.ModelSerializer):
-    trabajo_descripcion = serializers.CharField(source='trabajo.descripcion', read_only=True)
-    trabajo_categoria = serializers.CharField(source='trabajo.get_categoria_display', read_only=True)
-    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True)
-    cliente_nombre = serializers.CharField(source='trabajo.cliente.username', read_only=True)
+    trabajo_descripcion = serializers.CharField(source='trabajo.descripcion', read_only=True, default=None)
+    trabajo_categoria = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
+    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
+    cliente_nombre = serializers.CharField(source='trabajo.cliente.username', read_only=True, default=None)
     empresa_nombre = serializers.CharField(source='trabajo.cliente.empresa.nombre', read_only=True, default=None)
+    solicitante_nombre = serializers.CharField(source='solicitante.username', read_only=True, default=None)
 
     class Meta:
         model = SolicitudMaterial
         fields = [
             'id', 'trabajo', 'trabajo_descripcion', 'trabajo_categoria', 'trabajo_correlativo',
-            'cliente_nombre', 'empresa_nombre', 'descripcion', 'estado', 'lugar_compra',
-            'created_at', 'resuelto_en'
+            'cliente_nombre', 'empresa_nombre', 'solicitante', 'solicitante_nombre',
+            'descripcion', 'estado', 'lugar_compra', 'created_at', 'resuelto_en'
         ]
+        read_only_fields = ['solicitante']
 
 
 class TrabajoMaestranzaSerializer(serializers.ModelSerializer):

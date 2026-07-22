@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
@@ -19,11 +19,17 @@ class EsAdmin(permissions.BasePermission):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
 
 
+
+# URL pública donde queda alojado el logo (reemplaza por la ruta real una vez que lo subas)
+LOGO_URL = 'https://araratchile.com/wp-content/uploads/2023/02/Logos-16-1536x521.png'
+
+
 def _notificar_responsables(trabajo):
     """
-    Envía un correo a todos los responsables de la empresa del cliente
-    cuando un trabajo se marca como Terminado. Si algo falla (SMTP caído,
-    sin responsables con email, etc.) no bloquea el flujo del trabajo.
+    Envía un correo (HTML + texto plano) a todos los responsables de la
+    empresa del cliente cuando un trabajo se marca como Terminado. Si algo
+    falla (SMTP caído, sin responsables con email, etc.) no bloquea el
+    flujo del trabajo.
     """
     empresa = trabajo.cliente.empresa if trabajo.cliente else None
     if not empresa:
@@ -35,20 +41,113 @@ def _notificar_responsables(trabajo):
 
     destinatarios = [r.email for r in responsables_con_email]
 
+    categoria = trabajo.get_categoria_display()
+    asunto = f'Trabajo #{trabajo.correlativo} completado — Ararat'
+
+    texto_plano = (
+        f'Hola,\n\n'
+        f'El trabajo "{categoria}" #{trabajo.correlativo} de {empresa.nombre} ya está terminado.\n\n'
+        f'Descripción: {trabajo.descripcion}\n\n'
+        f'Ingresa al sistema para elegir retiro o delivery: https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:middle; padding-right:12px;">
+                        <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <span style="color:#ffffff; font-size:16px; font-weight:bold;">NOTIFICACION DE SOLICITUD</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:28px 24px;">
+                  <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">Hola,</p>
+                  <p style="margin:0 0 20px 0; font-size:15px; color:#111827; line-height:1.5;">
+                    El siguiente trabajo ya está <strong>terminado</strong>:
+                  </p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:20px;">
+                    <tr>
+                      <td style="padding:14px 16px; width:52px; vertical-align:top;">
+                        <table role="presentation" cellpadding="0" cellspacing="0">
+                          <tr>
+                            <td style="background-color:#e0e7ff; border-radius:4px; padding:4px 8px;">
+                              <span style="font-size:13px; font-weight:bold; color:#1e3a8a; white-space:nowrap;">
+                                #{trabajo.correlativo}
+                              </span>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                      <td style="padding:14px 16px 14px 0; vertical-align:top;">
+                        <p style="margin:0 0 2px 0; font-size:13px; color:#6b7280; text-transform:uppercase; font-weight:bold;">
+                          {categoria}
+                        </p>
+                        <p style="margin:0 0 6px 0; font-size:13px; color:#374151; font-weight:bold;">
+                          {empresa.nombre}
+                        </p>
+                        <p style="margin:0; font-size:14px; color:#111827;">
+                          {trabajo.descripcion}
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin:0 0 24px 0; font-size:14px; color:#374151; line-height:1.5;">
+                    Ingresa al sistema para elegir cómo quieres recibirlo (retiro en local o delivery).
+                  </p>
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="background-color:#1e3a8a; border-radius:6px;">
+                        <a href="https://app.araratchile.com" target="_blank"
+                           style="display:inline-block; padding:12px 24px; font-size:14px; font-weight:bold; color:#ffffff; text-decoration:none;">
+                          Ir al sistema
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0; font-size:12px; color:#9ca3af;">
+                    Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                    Este es un correo automático, no es necesario responderlo.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
     try:
-        send_mail(
-            subject=f'Trabajo #{trabajo.correlativo} completado — Ararat',
-            message=(
-                f'Hola,\n\n'
-                f'El trabajo "{trabajo.get_categoria_display()}" #{trabajo.correlativo} ya está terminado.\n\n'
-                f'Descripción: {trabajo.descripcion}\n\n'
-                f'Ingresa al sistema para elegir retiro o delivery.\n\n'
-                f'Ararat Estructuras Metálicas'
-            ),
-            from_email=None,  # usa DEFAULT_FROM_EMAIL de settings.py
-            recipient_list=destinatarios,
-            fail_silently=True,
+        email = EmailMultiAlternatives(
+            subject=asunto,
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
         )
+        email.attach_alternative(html, 'text/html')
+        email.send(fail_silently=True)
     except Exception:
         pass
 
@@ -251,7 +350,10 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
         if user.rol == 'ADMIN':
             return SolicitudMaterial.objects.all().order_by('-created_at')
         elif user.rol == 'TRABAJADOR':
-            return SolicitudMaterial.objects.filter(trabajo__asignado_a=user).order_by('-created_at')
+            from django.db.models import Q
+            return SolicitudMaterial.objects.filter(
+                Q(trabajo__asignado_a=user) | Q(solicitante=user)
+            ).order_by('-created_at')
         return SolicitudMaterial.objects.none()
 
     def _resolver(self, solicitud, lugar_compra=''):
@@ -260,14 +362,38 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
         solicitud.lugar_compra = lugar_compra
         solicitud.resuelto_en = timezone.now()
         solicitud.save()
-        solicitud.trabajo.retrasado = False
-        solicitud.trabajo.save()
+        if solicitud.trabajo:
+            solicitud.trabajo.retrasado = False
+            solicitud.trabajo.save()
+
+    def _puede_operar_solicitud(self, request, solicitud):
+        user = request.user
+        if user.rol == 'ADMIN':
+            return True
+        if solicitud.trabajo:
+            return solicitud.trabajo.asignado_a_id == user.id
+        return solicitud.solicitante_id == user.id
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def solicitar(self, request):
+        """
+        Pedido suelto de herramienta/material, sin trabajo asociado.
+        Queda registrado quién lo pidió (solicitante) y cuándo (created_at),
+        a modo de evidencia.
+        """
+        descripcion = (request.data.get('descripcion') or '').strip()
+        if not descripcion:
+            return Response({'error': 'Escribe qué necesitas'}, status=400)
+
+        solicitud = SolicitudMaterial.objects.create(
+            solicitante=request.user, descripcion=descripcion
+        )
+        return Response(SolicitudMaterialSerializer(solicitud).data, status=201)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def hay_en_bodega(self, request, pk=None):
         solicitud = self.get_object()
-        user = request.user
-        if user.rol != 'ADMIN' and solicitud.trabajo.asignado_a_id != user.id:
+        if not self._puede_operar_solicitud(request, solicitud):
             return Response({'error': 'No autorizado'}, status=403)
         self._resolver(solicitud, lugar_compra='Bodega propia')
         return Response(SolicitudMaterialSerializer(solicitud).data)
@@ -282,8 +408,7 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def marcar_recibido(self, request, pk=None):
         solicitud = self.get_object()
-        user = request.user
-        if user.rol != 'ADMIN' and solicitud.trabajo.asignado_a_id != user.id:
+        if not self._puede_operar_solicitud(request, solicitud):
             return Response({'error': 'No autorizado'}, status=403)
         lugar_compra = request.data.get('lugar_compra', '')
         self._resolver(solicitud, lugar_compra=lugar_compra)
