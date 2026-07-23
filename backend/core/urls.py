@@ -1,7 +1,8 @@
 from rest_framework.routers import DefaultRouter
 from .views import (
     UsuarioViewSet, EmpresaViewSet, ResponsableViewSet, TrabajoMaestranzaViewSet,
-    MaquinaViewSet, ReservaMaquinaViewSet, SolicitudMaterialViewSet
+    MaquinaViewSet, ReservaMaquinaViewSet, SolicitudMaterialViewSet,
+    ProductoFerreteriaViewSet, PedidoFerreteriaViewSet
 )
 
 router = DefaultRouter()
@@ -12,5 +13,7 @@ router.register('trabajos-maestranza', TrabajoMaestranzaViewSet, basename='traba
 router.register('maquinas', MaquinaViewSet)
 router.register('reservas-maquinas', ReservaMaquinaViewSet, basename='reserva-maquina')
 router.register('solicitudes-material', SolicitudMaterialViewSet, basename='solicitud-material')
+router.register('productos-ferreteria', ProductoFerreteriaViewSet, basename='producto-ferreteria')
+router.register('pedidos-ferreteria', PedidoFerreteriaViewSet, basename='pedido-ferreteria')
 
 urlpatterns = router.urls

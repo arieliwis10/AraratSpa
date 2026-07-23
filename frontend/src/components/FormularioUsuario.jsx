@@ -16,7 +16,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
   // Por defecto, si es un registro nuevo, arrancamos en modo "crear empresa nueva".
   const [creandoEmpresa, setCreandoEmpresa] = useState(!usuarioInicial)
   const [nuevaEmpresa, setNuevaEmpresa] = useState({ nombre: '', rut: '' })
-  const [responsables, setResponsables] = useState([{ nombre: '', telefono: '', email: '' }])
+  const [responsables, setResponsables] = useState([{ nombre: '', email: '' }])
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
 
@@ -54,7 +54,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
   }
 
   function agregarResponsable() {
-    setResponsables((prev) => [...prev, { nombre: '', telefono: '', email: '' }])
+    setResponsables((prev) => [...prev, { nombre: '', email: '' }])
   }
 
   function quitarResponsable(idx) {
@@ -206,22 +206,15 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                 onChange={handleNuevaEmpresaChange}
                 className="w-full border rounded p-2 text-sm"
               />
-
               <div className="pt-2 border-t border-primary/20">
                 <p className="text-sm font-bold text-dark mb-2">Responsables (contactos que encargan trabajos)</p>
                 <div className="flex flex-col gap-2">
                   {responsables.map((r, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center">
+                    <div key={idx} className="flex flex-col gap-2">
                       <input
                         placeholder="Nombre responsable"
                         value={r.nombre}
                         onChange={(e) => handleResponsableChange(idx, 'nombre', e.target.value)}
-                        className="border rounded p-2 text-sm"
-                      />
-                      <input
-                        placeholder="Teléfono (opcional)"
-                        value={r.telefono}
-                        onChange={(e) => handleResponsableChange(idx, 'telefono', e.target.value)}
                         className="border rounded p-2 text-sm"
                       />
                       <input
@@ -235,7 +228,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                         <button
                           type="button"
                           onClick={() => quitarResponsable(idx)}
-                          className="text-danger text-xs hover:underline whitespace-nowrap"
+                          className="text-danger text-xs hover:underline w-fit"
                         >
                           Quitar
                         </button>
@@ -244,7 +237,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                   ))}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  El email es opcional, pero si lo cargas, ese responsable recibirá un correo automático cuando sus trabajos queden terminados.
+                
                 </p>
                 <button
                   type="button"
@@ -259,7 +252,7 @@ export default function FormularioUsuario({ usuarioInicial, onGuardar, onCancela
                 <button
                   type="button"
                   onClick={usarEmpresaExistente}
-                  className="text-xs text-gray-500 hover:underline w-fit pt-1"
+                  className="text-xs text-primary text-gray-500 hover:underline w-fit pt-1"
                 >
                   ¿Ya existe la empresa? Elegir de la lista
                 </button>

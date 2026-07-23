@@ -4,4 +4,5 @@ export const CATEGORIAS = [
   { valor: 'SOLDADURA', etiqueta: 'Soldadura', imagen: '/categorias/soldadura.png' },
   { valor: 'REPUESTOS', etiqueta: 'Repuestos industriales', imagen: '/categorias/repuestos.png' },
   { valor: 'INSUMOS', etiqueta: 'Insumos ferretería', imagen: '/categorias/insumos.png' },
+  { valor: 'FABRICACION', etiqueta: 'Fabricacion de Proyectos', imagen: '/categorias/fabricacion.png' },
 ]

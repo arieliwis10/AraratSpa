@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria
 )
 
 
@@ -16,7 +16,7 @@ class EmpresaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Empresa
-        fields = ['id', 'nombre', 'rut', 'responsables']
+        fields = ['id', 'nombre', 'rut', 'responsables', 'email']
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -141,5 +141,35 @@ class ReservaMaquinaSerializer(serializers.ModelSerializer):
             'id', 'maquina', 'maquina_nombre', 'cliente', 'cliente_nombre',
             'fecha_inicio', 'fecha_fin', 'modalidad_entrega', 'direccion_entrega',
             'estado', 'created_at'
+        ]
+        read_only_fields = ['cliente', 'estado']
+
+class ProductoFerreteriaSerializer(serializers.ModelSerializer):
+    categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
+
+    class Meta:
+        model = ProductoFerreteria
+        fields = ['id', 'nombre', 'sku', 'descripcion', 'categoria', 'categoria_display', 'precio', 'imagen', 'activo']
+
+class ItemPedidoFerreteriaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemPedidoFerreteria
+        fields = ['id', 'producto', 'nombre', 'sku', 'precio', 'cantidad']
+
+
+class PedidoFerreteriaSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
+    responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
+    categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    items = ItemPedidoFerreteriaSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PedidoFerreteria
+        fields = [
+            'id', 'cliente', 'cliente_nombre', 'empresa_nombre',
+            'responsable', 'responsable_nombre', 'categoria', 'categoria_display',
+            'centro_costo', 'estado', 'estado_display', 'items', 'created_at'
         ]
         read_only_fields = ['cliente', 'estado']

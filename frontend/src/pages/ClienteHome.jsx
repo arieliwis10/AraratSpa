@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import fondoPanel from '../assets/fondo-panel.jpg'
 
 export default function ClienteHome() {
   const { usuario, logout } = useAuth()
@@ -20,32 +21,29 @@ export default function ClienteHome() {
         </div>
       </header>
 
-      <main className="w-full max-w-3xl mx-auto p-4 md:p-8">
-        <h2 className="text-lg text-dark font-medium mb-6 text-center">
-          ¿Qué necesitas hoy?
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <button
-            onClick={() => navigate('/cliente/maestranza')}
-            className="bg-white rounded-lg shadow p-8 flex flex-col items-center gap-3 hover:shadow-lg hover:-translate-y-0.5 transition border-t-4 border-primary"
-          >
-            <span className="text-5xl">🔧</span>
-            <span className="text-lg font-bold text-dark">Maestranza</span>
-            <span className="text-sm text-gray-500 text-center">
-              Solicita trabajos de soldadura, torno, repuestos y más
-            </span>
-          </button>
+      <main
+        className="relative w-full min-h-[calc(100dvh-64px)] bg-gray-100 bg-cover bg-center bg-fixed"
+        style={{ backgroundImage: `url(${fondoPanel})` }}
+      >
+        <div className="relative z-10 max-w-3xl mx-auto p-4 md:p-8">
+          <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-6">
+            ¿Qué necesitas hoy?
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <button
+              onClick={() => navigate('/cliente/maestranza')}
+              className="max-w-xs mx-auto bg-white rounded-lg shadow overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition border-4 border-[#00AEEF]"
+            >
+              <img src="/logos/ararat.png" alt="Maestranza" className="w-full h-auto block" />
+            </button>
 
-          <button
-            onClick={() => navigate('/cliente/arriendo')}
-            className="bg-white rounded-lg shadow p-8 flex flex-col items-center gap-3 hover:shadow-lg hover:-translate-y-0.5 transition border-t-4 border-danger"
-          >
-            <span className="text-5xl">🏗️</span>
-            <span className="text-lg font-bold text-dark">Arriendo Maquinaria</span>
-            <span className="text-sm text-gray-500 text-center">
-              Reserva grúas, carros y maquinaria disponible
-            </span>
-          </button>
+            <button
+              onClick={() => navigate('/cliente/arriendo')}
+              className="max-w-xs mx-auto bg-white rounded-lg shadow overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition border-4 border-[#8DC63F]"
+            >
+              <img src="/logos/kairos.png" alt="Arriendo Maquinaria" className="w-full h-auto block" />
+            </button>
+          </div>
         </div>
       </main>
     </div>

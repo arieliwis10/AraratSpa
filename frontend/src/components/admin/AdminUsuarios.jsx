@@ -74,7 +74,7 @@ export default function AdminUsuarios() {
       <div className="flex flex-col gap-4">
         <button
           onClick={() => { setMostrarEmpresas(false); cargarEmpresas() }}
-          className="text-primary text-sm font-medium hover:underline w-fit"
+          className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-primary text-sm font-medium hover:underline w-fit"
         >
           ← Volver a usuarios
         </button>

@@ -5,12 +5,14 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import EmailMultiAlternatives
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria,
+    PedidoFerreteria, ItemPedidoFerreteria
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
     TrabajoMaestranzaSerializer, MaterialUsadoSerializer, ComentarioTrabajoSerializer,
-    SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer
+    SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
+    ProductoFerreteriaSerializer, PedidoFerreteriaSerializer
 )
 
 
@@ -19,34 +21,57 @@ class EsAdmin(permissions.BasePermission):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
 
 
-
 # URL pública donde queda alojado el logo (reemplaza por la ruta real una vez que lo subas)
 LOGO_URL = 'https://araratchile.com/wp-content/uploads/2023/02/Logos-16-1536x521.png'
+
+# Ferretería Industrial (INSUMOS): destinatarios específicos.
+# El "reply_to" es la cuenta a la que le debe llegar si el destinatario responde el correo.
+FERRETERIA_INSUMOS_FROM_EMAIL = 'soldadurasararat@gmail.com'  # usado como reply_to
+FERRETERIA_INSUMOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
+FERRETERIA_INSUMOS_VENDEDOR_EMAIL = 'ariel_18gol@hotmail.com'
+
+# Repuestos industriales (REPUESTOS): destinatario (como estaba)
+REPUESTOS_FROM_EMAIL = 'soldadurasararat@gmail.com'  # usado como reply_to
+REPUESTOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
 
 
 def _notificar_responsables(trabajo):
     """
-    Envía un correo (HTML + texto plano) a todos los responsables de la
-    empresa del cliente cuando un trabajo se marca como Terminado. Si algo
-    falla (SMTP caído, sin responsables con email, etc.) no bloquea el
-    flujo del trabajo.
+    Envía un correo (HTML + texto plano) al email de la empresa y a todos
+    los responsables de la empresa del cliente cuando un trabajo se marca
+    como Terminado. Si algo falla (SMTP caído, sin destinatarios, etc.) no
+    bloquea el flujo del trabajo.
     """
     empresa = trabajo.cliente.empresa if trabajo.cliente else None
     if not empresa:
         return
 
+    destinatarios = set()
+
+    if empresa.email:
+        destinatarios.add(empresa.email)
+
     responsables_con_email = empresa.responsables.exclude(email__isnull=True).exclude(email='')
-    if not responsables_con_email.exists():
+    for r in responsables_con_email:
+        destinatarios.add(r.email)
+
+    if not destinatarios:
         return
 
-    destinatarios = [r.email for r in responsables_con_email]
+    destinatarios = list(destinatarios)
 
+    nombre_responsable = trabajo.responsable.nombre if trabajo.responsable else 'tu empresa'
     categoria = trabajo.get_categoria_display()
     asunto = f'Trabajo #{trabajo.correlativo} completado — Ararat'
 
+    mensaje_intro = (
+        f'Te escribo para informarte que hemos finalizado '
+        f'el trabajo solicitado por {nombre_responsable}.'
+    )
+
     texto_plano = (
         f'Hola,\n\n'
-        f'El trabajo "{categoria}" #{trabajo.correlativo} de {empresa.nombre} ya está terminado.\n\n'
+        f'{mensaje_intro}\n\n'
         f'Descripción: {trabajo.descripcion}\n\n'
         f'Ingresa al sistema para elegir retiro o delivery: https://app.araratchile.com\n\n'
         f'Ararat Estructuras Metálicas'
@@ -78,9 +103,9 @@ def _notificar_responsables(trabajo):
               </tr>
               <tr>
                 <td style="padding:28px 24px;">
-                  <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">Hola,</p>
+                  <p style="margin:0 0 16px 0; font-size:20px; color:#111827;">{empresa.nombre}:</p>
                   <p style="margin:0 0 20px 0; font-size:15px; color:#111827; line-height:1.5;">
-                    El siguiente trabajo ya está <strong>terminado</strong>:
+                    {mensaje_intro}
                   </p>
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; margin-bottom:20px;">
                     <tr>
@@ -109,7 +134,7 @@ def _notificar_responsables(trabajo):
                     </tr>
                   </table>
                   <p style="margin:0 0 24px 0; font-size:14px; color:#374151; line-height:1.5;">
-                    Ingresa al sistema para elegir cómo quieres recibirlo (retiro en local o delivery).
+                    Ingresa al sistema para elegir cómo quieres recibirlo (Retiro en local o Despacho).
                   </p>
                   <table role="presentation" cellpadding="0" cellspacing="0">
                     <tr>
@@ -150,6 +175,167 @@ def _notificar_responsables(trabajo):
         email.send(fail_silently=True)
     except Exception:
         pass
+
+
+def _enviar_correo_pedido(pedido, destinatarios, asunto, mostrar_precio, reply_to):
+    """
+    Arma y envía el correo de un pedido de ferretería/repuestos.
+    Si mostrar_precio=True, la tabla incluye SKU y Precio; si es False,
+    solo Producto, SKU y Cantidad (sin precio) — pensado para el vendedor.
+
+    El correo sale con from_email=None (usa DEFAULT_FROM_EMAIL, la cuenta
+    real autenticada en el servidor SMTP), para no ser rechazado/filtrado
+    por SPF/DKIM. El parámetro reply_to hace que, si el destinatario aprieta
+    "Responder", le llegue a la persona/cuenta que corresponde.
+    """
+    empresa = pedido.cliente.empresa
+    categoria = pedido.get_categoria_display()
+    nombre_responsable = pedido.responsable.nombre if pedido.responsable else 'Sin especificar'
+    items = pedido.items.all()
+
+    if mostrar_precio:
+        filas_texto = '\n'.join(
+            f"- {item.nombre} (SKU: {item.sku or '-'}) x{item.cantidad} "
+            f"— ${item.precio or 0:,.0f}".replace(',', '.')
+            for item in items
+        )
+        total = sum((item.precio or 0) * item.cantidad for item in items)
+    else:
+        filas_texto = '\n'.join(
+            f"- {item.nombre} (SKU: {item.sku or '-'}) x{item.cantidad}"
+            for item in items
+        )
+        total = None
+
+    texto_plano = (
+        f'Nueva solicitud de {categoria}.\n\n'
+        f'Empresa: {empresa.nombre if empresa else "-"}\n'
+        f'Solicitado por: {nombre_responsable}\n'
+        f'Centro de costo: {pedido.centro_costo}\n\n'
+        f'Ítems pedidos:\n{filas_texto}\n\n'
+        + (f'Total: ${total:,.0f}'.replace(',', '.') + '\n\n' if total is not None else '')
+        + f'Revisa el detalle en el sistema: https://app.araratchile.com'
+    )
+
+    celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:center;'
+    encabezado_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:center; background-color:#111827; color:#ffffff; font-size:12px; font-weight:bold;'
+
+    if mostrar_precio:
+        filas_html = ''.join(
+            f'<tr>'
+            f'<td style="{celda_borde}">{item.nombre}</td>'
+            f'<td style="{celda_borde}">{item.sku or "-"}</td>'
+            f'<td style="{celda_borde}">{item.cantidad}</td>'
+            f'<td style="{celda_borde}">${(item.precio or 0):,.0f}</td>'
+            f'</tr>'.replace(',', '.')
+            for item in items
+        )
+        encabezados_html = (
+            f'<td style="{encabezado_borde}">Producto</td>'
+            f'<td style="{encabezado_borde}">SKU</td>'
+            f'<td style="{encabezado_borde}">Cantidad</td>'
+            f'<td style="{encabezado_borde}">Precio</td>'
+        )
+        fila_total_html = (
+            f'<tr><td colspan="3" style="{celda_borde} font-weight:bold;">Total + IVA</td>'
+            f'<td style="{celda_borde} font-weight:bold;">${total:,.0f}</td></tr>'.replace(',', '.')
+        )
+    else:
+        filas_html = ''.join(
+            f'<tr>'
+            f'<td style="{celda_borde}">{item.nombre}</td>'
+            f'<td style="{celda_borde}">{item.cantidad}</td>'
+            f'<td style="{celda_borde}">{item.sku or "-"}</td>'
+            f'</tr>'
+            for item in items
+        )
+        encabezados_html = (
+            f'<td style="{encabezado_borde}">Producto</td>'
+            f'<td style="{encabezado_borde}">Cantidad</td>'
+            f'<td style="{encabezado_borde}">SKU</td>'
+        )
+        fila_total_html = ''
+
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <span style="color:#ffffff; font-size:16px; font-weight:bold;">Solicitud De Cotizacion Ararat</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <p style="margin:0 0 4px 0; font-size:14px; color:#111827;">Estimados,</p>
+                  <p style="margin:0 0 16px 0; font-size:14px; color:#111827;">Junto con saludar, les solicitamos por favor generar a la brevedad una cotización para los siguientes productos, considerando precio mayorista:</p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0; width:100%;">
+                    <tr>{encabezados_html}</tr>
+                    {filas_html}
+                    {fila_total_html}
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
+    email = EmailMultiAlternatives(
+        subject=asunto,
+        body=texto_plano,
+        from_email=None,
+        to=destinatarios,
+        reply_to=[reply_to],
+    )
+    email.attach_alternative(html, 'text/html')
+    email.send(fail_silently=False)
+
+
+def _notificar_pedido_ferreteria(pedido):
+    """
+    Envía la(s) notificación(es) de un pedido nuevo. El remitente técnico
+    (From) siempre es la cuenta real autenticada (DEFAULT_FROM_EMAIL) para
+    pasar SPF/DKIM; el "Responder a" queda con la cuenta correspondiente:
+
+    - Ferretería Industrial (INSUMOS): DOS correos, ambos con
+      reply_to=soldadurasararat@gmail.com:
+        1) a ventasapp@araratchile.com, con producto/sku/cantidad/precio + total
+        2) a ariel_18gol@hotmail.com (vendedor), con producto/sku/cantidad, sin precio
+    - Repuestos industriales (REPUESTOS): un solo correo, reply_to=ventasapp@araratchile.com,
+      a soldadurasararat@gmail.com, con la tabla completa.
+    """
+    categoria_label = pedido.get_categoria_display()
+    empresa = pedido.cliente.empresa
+    nombre_empresa = empresa.nombre if empresa else ''
+
+    if pedido.categoria == PedidoFerreteria.Categoria.INSUMOS:
+        asunto_jefe = f'{categoria_label} — {nombre_empresa}'
+        asunto_vendedor = f'Solicitud de cotización'
+
+        _enviar_correo_pedido(
+            pedido, [FERRETERIA_INSUMOS_JEFE_EMAIL], asunto_jefe,
+            mostrar_precio=True, reply_to=FERRETERIA_INSUMOS_FROM_EMAIL
+        )
+        _enviar_correo_pedido(
+            pedido, [FERRETERIA_INSUMOS_VENDEDOR_EMAIL], asunto_vendedor,
+            mostrar_precio=False, reply_to=FERRETERIA_INSUMOS_FROM_EMAIL
+        )
+    else:
+        asunto = f'Nueva solicitud de {categoria_label} — {nombre_empresa}'
+        _enviar_correo_pedido(
+            pedido, [REPUESTOS_JEFE_EMAIL], asunto,
+            mostrar_precio=True, reply_to=REPUESTOS_FROM_EMAIL
+        )
 
 
 class EmpresaViewSet(viewsets.ModelViewSet):
@@ -425,6 +611,100 @@ class MaquinaViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
+
+
+class ProductoFerreteriaViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductoFerreteriaSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ProductoFerreteria.objects.all()
+        user = self.request.user
+        # Los clientes solo ven productos activos; el admin ve todo (para poder reactivar)
+        if user.rol != 'ADMIN':
+            qs = qs.filter(activo=True)
+        categoria = self.request.query_params.get('categoria')
+        if categoria:
+            qs = qs.filter(categoria=categoria)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+
+class PedidoFerreteriaViewSet(viewsets.ModelViewSet):
+    serializer_class = PedidoFerreteriaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            qs = PedidoFerreteria.objects.all()
+            categoria = self.request.query_params.get('categoria')
+            if categoria:
+                qs = qs.filter(categoria=categoria)
+            return qs
+        return PedidoFerreteria.objects.filter(cliente=user)
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def solicitar(self, request):
+        user = request.user
+        if user.rol != 'CLIENTE':
+            return Response({'error': 'No autorizado'}, status=403)
+
+        categoria = request.data.get('categoria')
+        if categoria not in [PedidoFerreteria.Categoria.INSUMOS, PedidoFerreteria.Categoria.REPUESTOS]:
+            return Response({'error': 'Categoría inválida'}, status=400)
+
+        responsable_id = request.data.get('responsable')
+        if not responsable_id:
+            return Response({'error': 'Selecciona quién de tu empresa encarga este pedido'}, status=400)
+        try:
+            responsable = Responsable.objects.get(id=responsable_id, empresa=user.empresa)
+        except Responsable.DoesNotExist:
+            return Response({'error': 'Responsable inválido'}, status=400)
+
+        centro_costo = (request.data.get('centro_costo') or '').strip()
+        if not centro_costo:
+            return Response({'error': 'Falta el centro de costo'}, status=400)
+
+        items = request.data.get('items', [])
+        if not items:
+            return Response({'error': 'El carrito está vacío'}, status=400)
+
+        pedido = PedidoFerreteria.objects.create(
+            cliente=user, responsable=responsable, categoria=categoria, centro_costo=centro_costo
+        )
+        for item in items:
+            producto_id = item.get('producto_id') or None
+            producto_obj = ProductoFerreteria.objects.filter(id=producto_id).first() if producto_id else None
+            ItemPedidoFerreteria.objects.create(
+                pedido=pedido,
+                producto=producto_obj,
+                nombre=item.get('nombre', ''),
+                sku=producto_obj.sku if producto_obj else '',
+                precio=producto_obj.precio if producto_obj else None,
+                cantidad=item.get('cantidad', 1),
+            )
+
+        _notificar_pedido_ferreteria(pedido)
+
+        return Response(PedidoFerreteriaSerializer(pedido).data, status=201)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def marcar_revisado(self, request, pk=None):
+        pedido = self.get_object()
+        pedido.estado = 'REVISADO'
+        pedido.save()
+        return Response(PedidoFerreteriaSerializer(pedido).data)
 
 
 class ReservaMaquinaViewSet(viewsets.ModelViewSet):

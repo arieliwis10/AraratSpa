@@ -39,7 +39,7 @@ export default function AdminReservas() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="bg-white rounded-lg shadow p-4 w-fit">
         <label className="block text-sm font-medium mb-1 text-dark">Filtrar por cliente</label>
         <select
           value={filtroCliente}

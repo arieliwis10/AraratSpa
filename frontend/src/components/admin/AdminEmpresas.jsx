@@ -13,8 +13,9 @@ export default function AdminEmpresas() {
   const [form, setForm] = useState({ nombre: '', rut: '' })
   const [empresaExpandida, setEmpresaExpandida] = useState(null)
   const [nuevoResponsable, setNuevoResponsable] = useState({ nombre: '', telefono: '', email: '' })
-  const [emailEdits, setEmailEdits] = useState({})
-  const [guardandoEmail, setGuardandoEmail] = useState(null)
+  const [responsableEditando, setResponsableEditando] = useState(null)
+  const [formResponsable, setFormResponsable] = useState({ nombre: '', telefono: '', email: '' })
+  const [guardandoResponsable, setGuardandoResponsable] = useState(null)
 
   useEffect(() => {
     cargar()
@@ -81,32 +82,38 @@ export default function AdminEmpresas() {
     cargar()
   }
 
-  function emailActual(responsable) {
-    return emailEdits[responsable.id] !== undefined
-      ? emailEdits[responsable.id]
-      : (responsable.email || '')
+  function abrirEditarResponsable(r) {
+    setResponsableEditando(r.id)
+    setFormResponsable({
+      nombre: r.nombre || '',
+      telefono: r.telefono || '',
+      email: r.email || '',
+    })
   }
 
-  function handleEmailChange(responsableId, valor) {
-    setEmailEdits((prev) => ({ ...prev, [responsableId]: valor }))
+  function cerrarEditarResponsable() {
+    setResponsableEditando(null)
+    setFormResponsable({ nombre: '', telefono: '', email: '' })
   }
 
-  async function handleGuardarEmail(responsableId) {
-    const nuevoEmail = emailEdits[responsableId]
-    if (nuevoEmail === undefined) return
-    setGuardandoEmail(responsableId)
+  function handleFormResponsableChange(campo, valor) {
+    setFormResponsable((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  async function handleGuardarResponsable(id) {
+    if (!formResponsable.nombre.trim()) {
+      alert('El nombre no puede quedar vacío')
+      return
+    }
+    setGuardandoResponsable(id)
     try {
-      await actualizarResponsable(responsableId, { email: nuevoEmail })
-      setEmailEdits((prev) => {
-        const copia = { ...prev }
-        delete copia[responsableId]
-        return copia
-      })
+      await actualizarResponsable(id, formResponsable)
+      cerrarEditarResponsable()
       cargar()
     } catch (err) {
-      alert('Error al guardar el email')
+      alert('Error al guardar los datos del responsable')
     } finally {
-      setGuardandoEmail(null)
+      setGuardandoResponsable(null)
     }
   }
 
@@ -210,33 +217,66 @@ export default function AdminEmpresas() {
                       <p className="text-xs font-bold text-dark mb-2">Responsables (contactos que encargan trabajos)</p>
                       <div className="flex flex-col gap-2">
                         {emp.responsables.map((r) => {
-                          const emailModificado = emailEdits[r.id] !== undefined && emailEdits[r.id] !== (r.email || '')
+                          const estaEditando = responsableEditando === r.id
                           return (
                             <div key={r.id} className="bg-gray-50 rounded p-2 text-sm">
-                              <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-dark">{r.nombre} {r.telefono && `— ${r.telefono}`}</span>
-                                <button onClick={() => handleEliminarResponsable(r.id)} className="text-danger text-xs hover:underline">
-                                  Eliminar
-                                </button>
-                              </div>
-                              <div className="flex gap-2">
-                                <input
-                                  type="email"
-                                  placeholder="Email (para notificaciones de trabajos terminados)"
-                                  value={emailActual(r)}
-                                  onChange={(e) => handleEmailChange(r.id, e.target.value)}
-                                  className="flex-1 border rounded p-1.5 text-xs"
-                                />
-                                {emailModificado && (
-                                  <button
-                                    onClick={() => handleGuardarEmail(r.id)}
-                                    disabled={guardandoEmail === r.id}
-                                    className="bg-primary text-white px-2.5 py-1 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50 whitespace-nowrap"
-                                  >
-                                    {guardandoEmail === r.id ? 'Guardando...' : 'Guardar'}
-                                  </button>
-                                )}
-                              </div>
+                              {estaEditando ? (
+  <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-2 gap-2">
+      <input
+        placeholder="Nombre"
+        value={formResponsable.nombre}
+        onChange={(e) => handleFormResponsableChange('nombre', e.target.value)}
+        className="border rounded p-1.5 text-xs"
+      />
+      <input
+        type="email"
+        placeholder="Email (opcional)"
+        value={formResponsable.email}
+        onChange={(e) => handleFormResponsableChange('email', e.target.value)}
+        className="border rounded p-1.5 text-xs"
+      />
+    </div>
+    <div className="flex gap-2">
+      <button
+        onClick={() => handleGuardarResponsable(r.id)}
+        disabled={guardandoResponsable === r.id}
+        className="bg-primary text-white px-2.5 py-1 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50"
+      >
+        {guardandoResponsable === r.id ? 'Guardando...' : 'Guardar'}
+      </button>
+      <button
+        onClick={cerrarEditarResponsable}
+        className="text-dark/60 text-xs font-medium hover:underline"
+      >
+        Cancelar
+      </button>
+    </div>
+  </div>
+) : (
+  <div className="flex justify-between items-center">
+    <div>
+      <p className="text-dark">{r.nombre}</p>
+      <p className="text-xs text-gray-500">
+        {r.email || 'Sin email registrado'}
+      </p>
+    </div>
+    <div className="flex gap-3 shrink-0">
+      <button
+        onClick={() => abrirEditarResponsable(r)}
+        className="text-primary text-xs font-medium hover:underline"
+      >
+        Editar
+      </button>
+      <button
+        onClick={() => handleEliminarResponsable(r.id)}
+        className="text-danger text-xs hover:underline"
+      >
+        Eliminar
+      </button>
+    </div>
+  </div>
+)}
                             </div>
                           )
                         })}

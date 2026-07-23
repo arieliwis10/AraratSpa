@@ -9,6 +9,7 @@ import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
 import fondoPanel from '../assets/fondo-panel.jpg'
+import CarritoFerreteria from '../components/CarritoFerreteria'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -239,12 +240,22 @@ export default function ClienteMaestranza() {
         {/* Fondo de imagen, sin overlay */}
         <div className="relative z-10 max-w-4xl mx-auto p-4 md:p-8">
         {categoriaActiva ? (
-          <FormularioTrabajo
-            categoria={categoriaActiva.valor}
-            categoriaLabel={categoriaActiva.etiqueta}
-            onGuardar={handleGuardar}
-            onCancelar={() => setCategoriaActiva(null)}
-          />
+          categoriaActiva.valor === 'INSUMOS' || categoriaActiva.valor === 'REPUESTOS' ? (
+            <CarritoFerreteria
+              categoria={categoriaActiva.valor}
+              categoriaLabel={categoriaActiva.etiqueta}
+              responsables={responsables}
+              onEnviado={() => setCategoriaActiva(null)}
+              onCancelar={() => setCategoriaActiva(null)}
+            />
+          ) : (
+            <FormularioTrabajo
+              categoria={categoriaActiva.valor}
+              categoriaLabel={categoriaActiva.etiqueta}
+              onGuardar={handleGuardar}
+              onCancelar={() => setCategoriaActiva(null)}
+            />
+          )
         ) : (
           <div className="flex flex-col gap-6">
             <div>
