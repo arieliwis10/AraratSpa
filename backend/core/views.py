@@ -3,16 +3,19 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import EmailMultiAlternatives
+from django.db import models
+
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria,
-    PedidoFerreteria, ItemPedidoFerreteria
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
+    ProductoFlexible, FlexibleDetalle
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
     TrabajoMaestranzaSerializer, MaterialUsadoSerializer, ComentarioTrabajoSerializer,
     SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
-    ProductoFerreteriaSerializer, PedidoFerreteriaSerializer
+    ProductoFerreteriaSerializer, PedidoFerreteriaSerializer, ItemPedidoFerreteriaSerializer,
+    ProductoFlexibleSerializer, FlexibleDetalleSerializer
 )
 
 
@@ -433,15 +436,28 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         trabajo.save()
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
-    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=True, methods=['patch'])
     def marcar_completado(self, request, pk=None):
         trabajo = self.get_object()
-        if not self._puede_operar(request, trabajo):
-            return Response({'error': 'No autorizado'}, status=403)
+
+        if hasattr(trabajo, 'detalle_flexible'):
+            faltantes = trabajo.detalle_flexible.productos_faltantes()
+            if faltantes:
+                return Response(
+                    {
+                        'error': 'No se puede completar el trabajo: faltan productos en el catálogo de Flexibles.',
+                        'productos_faltantes': faltantes,
+                    },
+                    status=400,
+                )
+        trabajo.estado = 'TERMINADO'
+        trabajo.avance = 100
+        if hasattr(trabajo, 'detalle_flexible'):
+            trabajo.detalle_flexible.descontar_stock()
+
         trabajo.estado = 'TERMINADO'
         trabajo.avance = 100
         trabajo.save()
-        _notificar_responsables(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
@@ -490,6 +506,20 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(trabajo=trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+    @action(detail=True, methods=['post'])
+    def guardar_detalle_flexible(self, request, pk=None):
+        trabajo = self.get_object()
+        detalle = FlexibleDetalle.objects.filter(trabajo=trabajo).first()
+
+        if detalle:
+            serializer = FlexibleDetalleSerializer(detalle, data=request.data, partial=True)
+        else:
+            serializer = FlexibleDetalleSerializer(data={**request.data, 'trabajo': trabajo.id})
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save(trabajo=trabajo)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def agregar_comentario(self, request, pk=None):
@@ -733,3 +763,25 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
         reserva.estado = nuevo_estado
         reserva.save()
         return Response(ReservaMaquinaSerializer(reserva).data)
+
+class ProductoFlexibleViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductoFlexibleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ProductoFlexible.objects.all()
+        user = self.request.user
+        if user.rol != 'ADMIN':
+            qs = qs.filter(activo=True)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=False, methods=['get'])
+    def stock_bajo(self, request):
+        productos = ProductoFlexible.objects.filter(stock_actual__lte=models.F('stock_minimo'))
+        serializer = self.get_serializer(productos, many=True)
+        return Response(serializer.data)

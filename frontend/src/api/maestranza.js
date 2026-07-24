@@ -1,5 +1,6 @@
 import api from './axios'
 
+
 export const getTrabajos = (params = {}) => api.get('trabajos-maestranza/', { params })
 export const crearTrabajo = (formData) =>
   api.post('trabajos-maestranza/', formData, {
@@ -21,3 +22,13 @@ export const marcarMaterialRecibido = (id, lugarCompra) =>
   api.patch(`solicitudes-material/${id}/marcar_recibido/`, { lugar_compra: lugarCompra })
 export const agregarComentario = (id, mensaje, responsableId) =>
   api.post(`trabajos-maestranza/${id}/agregar_comentario/`, { mensaje, responsable: responsableId })
+
+export const getProductosFlexibles = (categoria) =>
+  api.get('productos-flexibles/', { params: categoria ? { categoria } : {} })
+export const crearProductoFlexible = (data) => api.post('productos-flexibles/', data)
+export const actualizarProductoFlexible = (id, data) => api.patch(`productos-flexibles/${id}/`, data)
+export const eliminarProductoFlexible = (id) => api.delete(`productos-flexibles/${id}/`)
+export const getStockBajoFlexibles = () => api.get('productos-flexibles/stock_bajo/')
+
+export const guardarDetalleFlexible = (trabajoId, data) =>
+  api.post(`trabajos-maestranza/${trabajoId}/guardar_detalle_flexible/`, data)

@@ -8,11 +8,13 @@ import AdminCompras from '../components/admin/AdminCompras'
 import AdminEmpresas from '../components/admin/AdminEmpresas'
 import AdminFerreteria from '../components/admin/AdminFerreteria'
 import fondoPanel from '../assets/fondo-panel.jpg'
+import AdminFlexibles from '../components/admin/AdminFlexibles'
 
 const TABS = [
   { id: 'usuarios', label: 'Usuarios' },
   { id: 'maestranza', label: 'Maestranza' },
   { id: 'ferreteria', label: 'Ferretería' },
+  { id: 'flexibles', label: 'Flexibles' },
   { id: 'maquinas', label: 'Máquinas' },
   { id: 'reservas', label: 'Reservas' },
   { id: 'compras', label: 'Compras' },
@@ -62,6 +64,7 @@ export default function DashboardAdmin() {
           {tab === 'usuarios' && <AdminUsuarios />}
           {tab === 'maestranza' && <AdminMaestranza />}
           {tab === 'ferreteria' && <AdminFerreteria />}
+          {tab === 'flexibles' && <AdminFlexibles/>}
           {tab === 'maquinas' && <AdminMaquinas />}
           {tab === 'reservas' && <AdminReservas />}
           {tab === 'compras' && <AdminCompras />}

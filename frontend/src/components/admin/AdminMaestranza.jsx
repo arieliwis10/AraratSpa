@@ -92,7 +92,11 @@ export default function AdminMaestranza() {
       return
     }
     try {
-      await actualizarTrabajo(trabajoId, { asignado_a: trabajadorId, estado: 'EN_PROGRESO' })
+      await actualizarTrabajo(trabajoId, {
+        asignado_a: trabajadorId,
+        estado: 'EN_PROGRESO',
+        aprobado: true,
+      })
       setTrabajadorSeleccionado((prev) => ({ ...prev, [trabajoId]: '' }))
       cargarTrabajos()
     } catch (err) {
@@ -113,13 +117,21 @@ export default function AdminMaestranza() {
   }
 
   async function guardarCambios() {
+    const asignandoAhora = Boolean(editando.asignado_a)
+    const estadoFinal = asignandoAhora && editando.estado === 'PENDIENTE' ? 'EN_PROGRESO' : editando.estado
+
+    const payload = {
+      estado: estadoFinal,
+      avance: editando.avance,
+      tiempo_entrega: editando.tiempo_entrega || null,
+      asignado_a: editando.asignado_a || null,
+    }
+    if (asignandoAhora) {
+      payload.aprobado = true
+    }
+
     try {
-      await actualizarTrabajo(editando.id, {
-        estado: editando.estado,
-        avance: editando.avance,
-        tiempo_entrega: editando.tiempo_entrega || null,
-        asignado_a: editando.asignado_a || null,
-      })
+      await actualizarTrabajo(editando.id, payload)
       setEditando(null)
       cargarTrabajos()
     } catch (err) {
@@ -417,22 +429,12 @@ export default function AdminMaestranza() {
               onClick={() => toggleExpandido(t.id)}
               className="w-full flex justify-between items-start text-left gap-3"
             >
-              <div className="flex gap-3 min-w-0">
+              <div className="flex gap-3 min-w-0 items-center">
                 <span className="text-xs font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 h-fit shrink-0">
                   #{t.correlativo}
                 </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
-                  <p className="text-sm text-gray-600">{t.empresa_nombre || t.cliente_nombre}</p>
-                  <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
-                    <span>Avance: {t.avance}%</span>
-                    {t.tiempo_entrega && <span>Entrega: {t.tiempo_entrega}</span>}
-                  </div>
-                  {t.estado === 'PENDIENTE' && !t.asignado_a && (
-                    <p className="text-xs text-primary font-medium mt-1">🧑‍🔧 Sin trabajador asignado</p>
-                  )}
-                </div>
+                <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
+                
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <BadgeEstado estado={t.estado} />
@@ -444,8 +446,15 @@ export default function AdminMaestranza() {
               <div className="mt-3 pt-3 border-t">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <p className="text-sm font-medium text-dark">{t.cliente_nombre}</p>
+                    <p className="text-sm font-medium text-dark">{t.empresa_nombre || t.cliente_nombre}</p>
                     <p className="text-sm text-gray-600">{t.descripcion}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
+                      <span>Avance: {t.avance}%</span>
+                      {t.tiempo_entrega && <span>Entrega: {t.tiempo_entrega}</span>}
+                    </div>
+                    {t.estado === 'PENDIENTE' && !t.asignado_a && (
+                      <p className="text-xs text-primary font-medium mt-1">🧑‍🔧 Sin trabajador asignado</p>
+                    )}
                   </div>
                   {t.aprobado ? (
                     <span className="text-xs text-green-700 bg-green-100 px-2 py-0.5 rounded whitespace-nowrap">Aprobado</span>

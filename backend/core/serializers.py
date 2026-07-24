@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria
+    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
+    ProductoFlexible, FlexibleDetalle
 )
 
 
@@ -93,6 +94,47 @@ class SolicitudMaterialSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['solicitante']
 
+class ProductoFlexibleSerializer(serializers.ModelSerializer):
+    stock_bajo = serializers.ReadOnlyField()
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+
+    class Meta:
+        model = ProductoFlexible
+        fields = [
+            'id', 'tipo', 'tipo_display', 'diametro', 'unidad_medida',
+            'precio', 'stock_actual', 'stock_minimo', 'stock_bajo', 'activo', 'created_at',
+        ]
+
+
+class FlexibleDetalleSerializer(serializers.ModelSerializer):
+    precio_sugerido = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FlexibleDetalle
+        fields = [
+            'id', 'trabajo', 'tipo_manguera', 'diametro', 'largo_metros',
+            'terminal_entrada', 'terminal_salida', 'cantidad_ferulas',
+            'precio_total', 'precio_sugerido',
+        ]
+        read_only_fields = ['trabajo']
+
+    def get_precio_sugerido(self, obj):
+        return obj.calcular_precio_sugerido()
+
+    def validate(self, data):
+        cantidad = data.get('cantidad_ferulas', getattr(self.instance, 'cantidad_ferulas', None))
+        entrada = data.get('terminal_entrada', getattr(self.instance, 'terminal_entrada', None))
+        salida = data.get('terminal_salida', getattr(self.instance, 'terminal_salida', None))
+
+        # Solo validamos si viene alguno de estos campos en el request (para no romper el guardado de solo precio_total)
+        if cantidad is not None and ('terminal_entrada' in data or 'terminal_salida' in data or 'cantidad_ferulas' in data):
+            if cantidad == 2 and not (entrada and salida):
+                raise serializers.ValidationError('Con manguera completa (2 férulas) debes indicar el terminal de entrada y de salida.')
+            if cantidad == 1 and not (entrada or salida):
+                raise serializers.ValidationError('Con arreglo de un lado (1 férula) debes indicar el terminal usado.')
+
+        return data
+
 
 class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
@@ -103,6 +145,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
     materiales = MaterialUsadoSerializer(many=True, read_only=True)
     comentarios = ComentarioTrabajoSerializer(many=True, read_only=True)
+    detalle_flexible = FlexibleDetalleSerializer(read_only=True)
 
     class Meta:
         model = TrabajoMaestranza
@@ -112,7 +155,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
-            'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at'
+            'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible'
         ]
         read_only_fields = ['cliente', 'correlativo']
 
