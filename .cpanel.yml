@@ -3,5 +3,10 @@ deployment:
   tasks:
     - export DEPLOYPATH_API=/home/araratch/api.araratchile.com/
     - export DEPLOYPATH_APP=/home/araratch/app.araratchile.com/
+    - export VENV=/home/araratch/virtualenv/api.araratchile.com/3.12
     - /bin/cp -R backend/* $DEPLOYPATH_API
     - /bin/cp -R frontend/dist/* $DEPLOYPATH_APP
+    - source $VENV/bin/activate && cd $DEPLOYPATH_API && pip install -r requirements.txt --quiet
+    - source $VENV/bin/activate && cd $DEPLOYPATH_API && python manage.py migrate --noinput
+    - source $VENV/bin/activate && cd $DEPLOYPATH_API && python manage.py collectstatic --noinput
+    - mkdir -p $DEPLOYPATH_API/tmp && touch $DEPLOYPATH_API/tmp/restart.txt
