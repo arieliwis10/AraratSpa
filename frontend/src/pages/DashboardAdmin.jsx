@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext'
 import AdminUsuarios from '../components/admin/AdminUsuarios'
 import AdminMaestranza from '../components/admin/AdminMaestranza'
 import AdminMaquinas from '../components/admin/AdminMaquinas'
-import AdminReservas from '../components/admin/AdminReservas'
 import AdminCompras from '../components/admin/AdminCompras'
 import AdminEmpresas from '../components/admin/AdminEmpresas'
 import AdminFerreteria from '../components/admin/AdminFerreteria'
@@ -16,7 +15,6 @@ const TABS = [
   { id: 'ferreteria', label: 'Ferretería' },
   { id: 'flexibles', label: 'Flexibles' },
   { id: 'maquinas', label: 'Máquinas' },
-  { id: 'reservas', label: 'Reservas' },
   { id: 'compras', label: 'Compras' },
 ]
 
@@ -25,8 +23,13 @@ export default function DashboardAdmin() {
   const [tab, setTab] = useState('usuarios')
 
   return (
-    <div className="min-h-screen bg-gray-100 w-full">
-      <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
+    <div className="relative min-h-screen w-full">
+      <div
+        className="fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${fondoPanel})` }}
+      />
+
+      <header className="relative z-10 w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
         <h1 className="text-xl md:text-2xl font-bold">Panel Admin</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-300 hidden sm:inline">Hola, {usuario.username}</span>
@@ -39,7 +42,7 @@ export default function DashboardAdmin() {
         </div>
       </header>
 
-      <nav className="w-full bg-white border-b border-gray-200 px-4 md:px-8 flex gap-1 overflow-x-auto">
+      <nav className="relative z-10 w-full bg-white border-b border-gray-200 px-4 md:px-8 flex gap-1 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -55,18 +58,13 @@ export default function DashboardAdmin() {
         ))}
       </nav>
 
-      <main
-        className="relative w-full min-h-[calc(100dvh-64px-49px)] bg-gray-100 bg-cover bg-center bg-fixed"
-        style={{ backgroundImage: `url(${fondoPanel})` }}
-      >
-        {/* Fondo de imagen, sin overlay */}
-        <div className="relative z-10 max-w-5xl mx-auto p-4 md:p-8">
+      <main className="relative z-10 w-full min-h-[calc(100dvh-64px-49px)]">
+        <div className="relative max-w-5xl mx-auto p-4 md:p-8">
           {tab === 'usuarios' && <AdminUsuarios />}
           {tab === 'maestranza' && <AdminMaestranza />}
           {tab === 'ferreteria' && <AdminFerreteria />}
-          {tab === 'flexibles' && <AdminFlexibles/>}
+          {tab === 'flexibles' && <AdminFlexibles />}
           {tab === 'maquinas' && <AdminMaquinas />}
-          {tab === 'reservas' && <AdminReservas />}
           {tab === 'compras' && <AdminCompras />}
         </div>
       </main>

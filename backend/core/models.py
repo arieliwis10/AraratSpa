@@ -1,6 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP 
 
 
 class Empresa(models.Model):
@@ -170,11 +170,53 @@ class Maquina(models.Model):
     precio_hora = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     precio_dia = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     precio_semana = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_mes = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     activo = models.BooleanField(default=True)
 
+    IVA = Decimal('0.19')
+
     def __str__(self):
         return self.nombre
+
+    def calcular_precio(self, dias):
+        """
+        Calcula neto/IVA/total para una reserva de `dias` días, según la
+        tarifa correspondiente al tramo:
+          - 1 a 3 días: precio_dia * dias
+          - 4 a 17 días (2 semanas + 3 días): (precio_semana / 7) * dias
+          - 18+ días: (precio_mes / 30) * dias
+
+        Devuelve None si la máquina no tiene configurado el precio del
+        tramo que corresponde a esa duración.
+        """
+        if dias <= 3:
+            tarifa_aplicada = 'dia'
+            precio_base = self.precio_dia
+            neto = precio_base * dias if precio_base is not None else None
+        elif dias <= 17:
+            tarifa_aplicada = 'semana'
+            precio_base = self.precio_semana
+            neto = (precio_base / Decimal('7')) * dias if precio_base is not None else None
+        else:
+            tarifa_aplicada = 'mes'
+            precio_base = self.precio_mes
+            neto = (precio_base / Decimal('30')) * dias if precio_base is not None else None
+
+        if neto is None:
+            return None
+
+        neto = neto.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        iva = (neto * self.IVA).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        total = neto + iva
+
+        return {
+            'dias': dias,
+            'tarifa_aplicada': tarifa_aplicada,
+            'precio_neto': neto,
+            'iva': iva,
+            'precio_total': total,
+        }
 
 
 class ReservaMaquina(models.Model):
@@ -182,6 +224,34 @@ class ReservaMaquina(models.Model):
         PENDIENTE = 'PENDIENTE', 'Pendiente'
         APROBADA = 'APROBADA', 'Aprobada'
         RECHAZADA = 'RECHAZADA', 'Rechazada'
+
+    class Entrega(models.TextChoices):
+        RETIRO = 'RETIRO', 'Retira en local'
+        DELIVERY = 'DELIVERY', 'Entrega en obra'
+
+    maquina = models.ForeignKey(Maquina, on_delete=models.CASCADE, related_name='reservas')
+    cliente = models.ForeignKey(
+        Usuario, on_delete=models.CASCADE, related_name='reservas',
+        limit_choices_to={'rol': 'CLIENTE'}
+    )
+    fecha_inicio = models.DateField()
+    fecha_fin = models.DateField()
+    modalidad_entrega = models.CharField(max_length=20, choices=Entrega.choices, default=Entrega.RETIRO)
+    direccion_entrega = models.CharField(max_length=255, blank=True)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
+
+    # Precio calculado al momento de crear la reserva (queda "congelado"
+    # aunque después cambien los precios de la máquina).
+    dias = models.PositiveIntegerField(null=True, blank=True)
+    tarifa_aplicada = models.CharField(max_length=10, blank=True)
+    precio_neto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    iva = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.maquina.nombre} - {self.cliente.username} ({self.fecha_inicio} a {self.fecha_fin})"
 
     class Entrega(models.TextChoices):
         RETIRO = 'RETIRO', 'Retira en local'
@@ -398,3 +468,64 @@ class FlexibleDetalle(models.Model):
             total += self.ferula.precio * self.cantidad_ferulas
 
         return total
+
+class ProductoGas(models.Model):
+    class Tipo(models.TextChoices):
+        KG5 = 'KG5', 'Gas licuado 5kg'
+        KG11 = 'KG11', 'Gas licuado 11kg'
+        KG15 = 'KG15', 'Gas licuado 15kg'
+        KG45 = 'KG45', 'Gas licuado 45kg'
+        GRUA = 'GRUA', 'Gas grúa'
+
+    tipo = models.CharField(max_length=10, choices=Tipo.choices)
+    nombre = models.CharField(max_length=100, blank=True)  # opcional, ej. marca/proveedor
+    precio = models.DecimalField(max_digits=10, decimal_places=2)
+    stock_actual = models.PositiveIntegerField(default=0)
+    stock_minimo = models.PositiveIntegerField(default=5)
+    activo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['tipo']
+
+    def __str__(self):
+        base = self.get_tipo_display()
+        return f"{base} - {self.nombre}" if self.nombre else base
+
+    @property
+    def stock_bajo(self):
+        return self.stock_actual <= self.stock_minimo
+
+
+class PedidoGas(models.Model):
+    class Estado(models.TextChoices):
+        PENDIENTE = 'PENDIENTE', 'Pendiente'
+        REVISADO = 'REVISADO', 'Revisado'
+
+    cliente = models.ForeignKey(
+        Usuario, on_delete=models.CASCADE, related_name='pedidos_gas',
+        limit_choices_to={'rol': 'CLIENTE'}
+    )
+    responsable = models.ForeignKey(
+        Responsable, on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_gas'
+    )
+    centro_costo = models.CharField(max_length=100)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Pedido de gas - {self.cliente.username}"
+
+
+class ItemPedidoGas(models.Model):
+    pedido = models.ForeignKey(PedidoGas, on_delete=models.CASCADE, related_name='items')
+    producto = models.ForeignKey(ProductoGas, on_delete=models.SET_NULL, null=True, blank=True)
+    nombre = models.CharField(max_length=200)
+    precio = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cantidad = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.nombre} x{self.cantidad}"

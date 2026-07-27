@@ -257,8 +257,8 @@ export default function AdminMaestranza() {
                           {t.asignado_a_nombre && <span>Realizado por: {t.asignado_a_nombre}</span>}
                           <span>
                             {t.modalidad_entrega
-                              ? (t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : `✅ Delivery a ${t.direccion_entrega}`)
-                              : '⏳ Cliente aún no elige retiro/delivery'}
+                              ? (t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : `✅ Despacho a ${t.direccion_entrega}`)
+                              : '⏳ Cliente aún no elige retiro/despacho'}
                           </span>
                         </div>
 
@@ -473,7 +473,7 @@ export default function AdminMaestranza() {
                   <span>Centro de costo: {t.centro_costo}</span>
                   {t.asignado_a_nombre && <span>Asignado a: {t.asignado_a_nombre}</span>}
                   {t.modalidad_entrega && (
-                    <span>{t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : 'Delivery'}</span>
+                    <span>{t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : 'DESPACHO'}</span>
                   )}
                 </div>
 

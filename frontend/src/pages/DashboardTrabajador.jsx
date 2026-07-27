@@ -770,8 +770,8 @@ export default function DashboardTrabajador() {
                                   <span>Centro de costo: {t.centro_costo}</span>
                                   <span>
                                     {t.modalidad_entrega
-                                      ? (t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : `✅ Delivery a ${t.direccion_entrega}`)
-                                      : '⏳ Cliente aún no elige retiro/delivery'}
+                                      ? (t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : `✅ DESPACHO a ${t.direccion_entrega}`)
+                                      : '⏳ Cliente aún no elige retiro/despacho'}
                                   </span>
                                 </div>
                               </div>

@@ -3,6 +3,30 @@ import { getReservas, cambiarEstadoReserva } from '../../api/arriendo'
 import { getUsuarios } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
 
+function formatFecha(fechaISO) {
+  // fechaISO viene como "AAAA-MM-DD" -> lo pasamos a "DD-MM-AAAA"
+  if (!fechaISO) return '—'
+  const [anio, mes, dia] = fechaISO.split('-')
+  return `${dia}-${mes}-${anio}`
+}
+
+function formatSolicitado(createdAt) {
+  if (!createdAt) return null
+  const fecha = new Date(createdAt)
+  const partes = new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(fecha)
+
+  const obtener = (tipo) => partes.find((p) => p.type === tipo)?.value
+  return `${obtener('day')}-${obtener('month')}-${obtener('year')} ${obtener('hour')}:${obtener('minute')}`
+}
+
 export default function AdminReservas() {
   const [reservas, setReservas] = useState([])
   const [clientes, setClientes] = useState([])
@@ -62,14 +86,19 @@ export default function AdminReservas() {
           )}
           {reservas.map((r) => (
             <div key={r.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center flex-wrap gap-3">
-            <div>
-            <p className="font-bold text-dark">{r.maquina_nombre}</p>
-            <p className="text-sm text-gray-600">Cliente: {r.cliente_nombre}</p>
-            <p className="text-xs text-gray-500">{r.fecha_inicio} a {r.fecha_fin}</p>
-            <p className="text-xs text-gray-500">
-                {r.modalidad_entrega === 'DELIVERY' ? `Entrega en obra: ${r.direccion_entrega}` : 'Retiro en local'}
-            </p>
-            </div>
+              <div>
+                <p className="font-bold text-dark">{r.maquina_nombre}</p>
+                <p className="text-sm text-gray-600">Cliente: {r.cliente_nombre}</p>
+                <p className="text-xs text-gray-500">{formatFecha(r.fecha_inicio)} a {formatFecha(r.fecha_fin)}</p>
+                <p className="text-xs text-gray-500">
+                  {r.modalidad_entrega === 'DESPACHO' ? `Entrega en obra: ${r.direccion_entrega}` : 'Retiro en local'}
+                </p>
+                {r.created_at && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Solicitado: {formatSolicitado(r.created_at)}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-3">
                 <BadgeEstado estado={r.estado} />
                 {r.estado === 'PENDIENTE' && (

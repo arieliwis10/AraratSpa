@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas
 )
 
 
@@ -177,7 +177,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
 class MaquinaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Maquina
-        fields = ['id', 'nombre', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'activo']
+        fields = ['id', 'nombre', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'activo']
 
 
 class ReservaMaquinaSerializer(serializers.ModelSerializer):
@@ -189,9 +189,10 @@ class ReservaMaquinaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'maquina', 'maquina_nombre', 'cliente', 'cliente_nombre',
             'fecha_inicio', 'fecha_fin', 'modalidad_entrega', 'direccion_entrega',
-            'estado', 'created_at'
+            'estado', 'dias', 'tarifa_aplicada', 'precio_neto', 'iva', 'precio_total',
+            'created_at'
         ]
-        read_only_fields = ['cliente', 'estado']
+        read_only_fields = ['cliente', 'estado', 'dias', 'tarifa_aplicada', 'precio_neto', 'iva', 'precio_total']
 
 class ProductoFerreteriaSerializer(serializers.ModelSerializer):
     categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
@@ -220,5 +221,37 @@ class PedidoFerreteriaSerializer(serializers.ModelSerializer):
             'id', 'cliente', 'cliente_nombre', 'empresa_nombre',
             'responsable', 'responsable_nombre', 'categoria', 'categoria_display',
             'centro_costo', 'estado', 'estado_display', 'items', 'created_at'
+        ]
+        read_only_fields = ['cliente', 'estado']
+
+
+class ProductoGasSerializer(serializers.ModelSerializer):
+    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    stock_bajo = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ProductoGas
+        fields = ['id', 'tipo', 'tipo_display', 'nombre', 'precio', 'stock_actual', 'stock_minimo', 'stock_bajo', 'activo', 'created_at']
+
+
+class ItemPedidoGasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemPedidoGas
+        fields = ['id', 'producto', 'nombre', 'precio', 'cantidad']
+
+
+class PedidoGasSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
+    responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
+    estado_display = serializers.CharField(source='get_estado_display', read_only=True)
+    items = ItemPedidoGasSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PedidoGas
+        fields = [
+            'id', 'cliente', 'cliente_nombre', 'empresa_nombre',
+            'responsable', 'responsable_nombre', 'centro_costo',
+            'estado', 'estado_display', 'items', 'created_at'
         ]
         read_only_fields = ['cliente', 'estado']

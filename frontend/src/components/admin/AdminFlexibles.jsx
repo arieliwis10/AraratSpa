@@ -284,8 +284,12 @@ function ProductosFlexibles() {
               </div>
             </div>
           ))}
+
+          
           {productosFiltrados.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-6">No hay productos en esta categoría todavía.</p>
+            
+            <p className="text-sm text-black-500 text-center py-6">No hay productos en esta categoría todavía.</p>
+            
           )}
         </div>
       )}

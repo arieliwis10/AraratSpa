@@ -8,14 +8,14 @@ from django.db import models
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
     TrabajoMaestranzaSerializer, MaterialUsadoSerializer, ComentarioTrabajoSerializer,
     SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
     ProductoFerreteriaSerializer, PedidoFerreteriaSerializer, ItemPedidoFerreteriaSerializer,
-    ProductoFlexibleSerializer, FlexibleDetalleSerializer
+    ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer
 )
 
 
@@ -642,6 +642,81 @@ class MaquinaViewSet(viewsets.ModelViewSet):
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
 
+    @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def cotizar(self, request, pk=None):
+        from datetime import date
+
+        maquina = self.get_object()
+        fecha_inicio_str = request.query_params.get('fecha_inicio')
+        fecha_fin_str = request.query_params.get('fecha_fin')
+
+        if not fecha_inicio_str or not fecha_fin_str:
+            return Response({'error': 'Faltan fecha_inicio y fecha_fin'}, status=400)
+
+        try:
+            fecha_inicio = date.fromisoformat(fecha_inicio_str)
+            fecha_fin = date.fromisoformat(fecha_fin_str)
+        except ValueError:
+            return Response({'error': 'Formato de fecha inválido'}, status=400)
+
+        if fecha_fin < fecha_inicio:
+            return Response({'error': 'La fecha de término no puede ser anterior a la de inicio'}, status=400)
+
+        dias = (fecha_fin - fecha_inicio).days + 1
+        resultado = maquina.calcular_precio(dias)
+
+        if resultado is None:
+            return Response(
+                {'error': 'La máquina no tiene configurada la tarifa para esta duración'}, status=400
+            )
+
+        return Response(resultado)
+
+
+class ReservaMaquinaViewSet(viewsets.ModelViewSet):
+    serializer_class = ReservaMaquinaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            qs = ReservaMaquina.objects.all()
+            cliente_id = self.request.query_params.get('cliente')
+            if cliente_id:
+                qs = qs.filter(cliente_id=cliente_id)
+            return qs.order_by('-created_at')
+        return ReservaMaquina.objects.filter(cliente=user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        fecha_inicio = serializer.validated_data['fecha_inicio']
+        fecha_fin = serializer.validated_data['fecha_fin']
+        maquina = serializer.validated_data['maquina']
+
+        dias = (fecha_fin - fecha_inicio).days + 1
+        cotizacion = maquina.calcular_precio(dias)
+
+        extra = {}
+        if cotizacion:
+            extra = {
+                'dias': cotizacion['dias'],
+                'tarifa_aplicada': cotizacion['tarifa_aplicada'],
+                'precio_neto': cotizacion['precio_neto'],
+                'iva': cotizacion['iva'],
+                'precio_total': cotizacion['precio_total'],
+            }
+
+        serializer.save(cliente=self.request.user, estado='PENDIENTE', **extra)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def cambiar_estado(self, request, pk=None):
+        reserva = self.get_object()
+        nuevo_estado = request.data.get('estado')
+        if nuevo_estado not in ['APROBADA', 'RECHAZADA', 'PENDIENTE']:
+            return Response({'error': 'Estado inválido'}, status=400)
+        reserva.estado = nuevo_estado
+        reserva.save()
+        return Response(ReservaMaquinaSerializer(reserva).data)
+
 
 class ProductoFerreteriaViewSet(viewsets.ModelViewSet):
     serializer_class = ProductoFerreteriaSerializer
@@ -737,33 +812,6 @@ class PedidoFerreteriaViewSet(viewsets.ModelViewSet):
         return Response(PedidoFerreteriaSerializer(pedido).data)
 
 
-class ReservaMaquinaViewSet(viewsets.ModelViewSet):
-    serializer_class = ReservaMaquinaSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.rol == 'ADMIN':
-            qs = ReservaMaquina.objects.all()
-            cliente_id = self.request.query_params.get('cliente')
-            if cliente_id:
-                qs = qs.filter(cliente_id=cliente_id)
-            return qs.order_by('-created_at')
-        return ReservaMaquina.objects.filter(cliente=user).order_by('-created_at')
-
-    def perform_create(self, serializer):
-        serializer.save(cliente=self.request.user, estado='PENDIENTE')
-
-    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
-    def cambiar_estado(self, request, pk=None):
-        reserva = self.get_object()
-        nuevo_estado = request.data.get('estado')
-        if nuevo_estado not in ['APROBADA', 'RECHAZADA', 'PENDIENTE']:
-            return Response({'error': 'Estado inválido'}, status=400)
-        reserva.estado = nuevo_estado
-        reserva.save()
-        return Response(ReservaMaquinaSerializer(reserva).data)
-
 class ProductoFlexibleViewSet(viewsets.ModelViewSet):
     serializer_class = ProductoFlexibleSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -788,3 +836,88 @@ class ProductoFlexibleViewSet(viewsets.ModelViewSet):
         productos = ProductoFlexible.objects.filter(stock_actual__lte=models.F('stock_minimo'))
         serializer = self.get_serializer(productos, many=True)
         return Response(serializer.data)
+
+class ProductoGasViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductoGasSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ProductoGas.objects.all()
+        if self.request.user.rol != 'ADMIN':
+            qs = qs.filter(activo=True)
+        return qs
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=False, methods=['get'])
+    def stock_bajo(self, request):
+        productos = ProductoGas.objects.filter(stock_actual__lte=models.F('stock_minimo'), activo=True)
+        serializer = self.get_serializer(productos, many=True)
+        return Response(serializer.data)
+
+
+class PedidoGasViewSet(viewsets.ModelViewSet):
+    serializer_class = PedidoGasSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            return PedidoGas.objects.all()
+        return PedidoGas.objects.filter(cliente=user)
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def solicitar(self, request):
+        user = request.user
+        if user.rol != 'CLIENTE':
+            return Response({'error': 'No autorizado'}, status=403)
+
+        responsable_id = request.data.get('responsable')
+        if not responsable_id:
+            return Response({'error': 'Selecciona quién de tu empresa encarga este pedido'}, status=400)
+        try:
+            responsable = Responsable.objects.get(id=responsable_id, empresa=user.empresa)
+        except Responsable.DoesNotExist:
+            return Response({'error': 'Responsable inválido'}, status=400)
+
+        centro_costo = (request.data.get('centro_costo') or '').strip()
+        if not centro_costo:
+            return Response({'error': 'Falta el centro de costo'}, status=400)
+
+        items = request.data.get('items', [])
+        if not items:
+            return Response({'error': 'El carrito está vacío'}, status=400)
+
+        pedido = PedidoGas.objects.create(cliente=user, responsable=responsable, centro_costo=centro_costo)
+        for item in items:
+            producto_id = item.get('producto_id') or None
+            producto_obj = ProductoGas.objects.filter(id=producto_id).first() if producto_id else None
+            ItemPedidoGas.objects.create(
+                pedido=pedido,
+                producto=producto_obj,
+                nombre=item.get('nombre', ''),
+                precio=producto_obj.precio if producto_obj else None,
+                cantidad=item.get('cantidad', 1),
+            )
+
+        return Response(PedidoGasSerializer(pedido).data, status=201)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def marcar_revisado(self, request, pk=None):
+        pedido = self.get_object()
+        if pedido.estado != 'REVISADO':
+            for item in pedido.items.all():
+                if item.producto:
+                    item.producto.stock_actual = max(0, item.producto.stock_actual - item.cantidad)
+                    item.producto.save()
+            pedido.estado = 'REVISADO'
+            pedido.save()
+        return Response(PedidoGasSerializer(pedido).data)

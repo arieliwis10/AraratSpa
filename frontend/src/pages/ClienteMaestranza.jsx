@@ -40,7 +40,7 @@ function SelectorEntrega({ trabajo, onElegido }) {
   const [enviando, setEnviando] = useState(false)
 
   async function confirmar() {
-    if (modalidad === 'DELIVERY' && !direccion.trim()) {
+    if (modalidad === 'DESPACHO' && !direccion.trim()) {
       alert('Ingresa la dirección de entrega')
       return
     }
@@ -48,7 +48,7 @@ function SelectorEntrega({ trabajo, onElegido }) {
     try {
       await elegirEntrega(trabajo.id, {
         modalidad_entrega: modalidad,
-        direccion_entrega: modalidad === 'DELIVERY' ? direccion : '',
+        direccion_entrega: modalidad === 'DESPACHO' ? direccion : '',
       })
       onElegido()
     } catch (err) {
@@ -75,15 +75,15 @@ function SelectorEntrega({ trabajo, onElegido }) {
         </button>
         <button
           type="button"
-          onClick={() => setModalidad('DELIVERY')}
+          onClick={() => setModalidad('DESPACHO')}
           className={`flex-1 px-3 py-2 rounded text-sm font-medium ${
-            modalidad === 'DELIVERY' ? 'bg-primary text-white' : 'bg-white text-dark border'
+            modalidad === 'DESPACHO' ? 'bg-primary text-white' : 'bg-white text-dark border'
           }`}
         >
-          Delivery
+          DESPACHO
         </button>
       </div>
-      {modalidad === 'DELIVERY' && (
+      {modalidad === 'DESPACHO' && (
         <input
           value={direccion}
           onChange={(e) => setDireccion(e.target.value)}
@@ -193,7 +193,7 @@ export default function ClienteMaestranza() {
       t.categoria_display,
       t.descripcion,
       t.centro_costo,
-      t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : `Delivery: ${t.direccion_entrega}`,
+      t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : `DESPACHO: ${t.direccion_entrega}`,
     ])
 
     autoTable(doc, {
@@ -341,7 +341,7 @@ export default function ClienteMaestranza() {
                                 <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
                                 <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
                                 <p className="text-sm text-gray-600 mt-1">
-                                  {t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : '✅ Delivery confirmado'}
+                                  {t.modalidad_entrega === 'RETIRO' ? '✅ Retiro en local' : '✅ DESPACHO confirmado'}
                                 </p>
                               </div>
                             </div>
@@ -361,7 +361,7 @@ export default function ClienteMaestranza() {
                               <div className="bg-green-50 text-green-700 text-sm font-medium rounded p-2 text-center">
                                 {t.modalidad_entrega === 'RETIRO'
                                   ? '✅ Confirmado: Retiro en local'
-                                  : `✅ Confirmado: Delivery a ${t.direccion_entrega}`}
+                                  : `✅ Confirmado: DESPACHO a ${t.direccion_entrega}`}
                               </div>
                             </div>
                           )}

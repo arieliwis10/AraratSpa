@@ -11,3 +11,13 @@ export const crearReserva = (data) => api.post('reservas-maquinas/', data)
 export const cambiarEstadoReserva = (id, estado) =>
   api.patch(`reservas-maquinas/${id}/cambiar_estado/`, { estado })
 export const cancelarReserva = (id) => api.delete(`reservas-maquinas/${id}/`)
+export const cotizarMaquina = (id, fecha_inicio, fecha_fin) =>
+  api.get(`/maquinas/${id}/cotizar/`, { params: { fecha_inicio, fecha_fin } })
+export const getProductosGas = () => api.get('productos-gas/')
+export const crearProductoGas = (data) => api.post('productos-gas/', data)
+export const actualizarProductoGas = (id, data) => api.patch(`productos-gas/${id}/`, data)
+export const eliminarProductoGas = (id) => api.delete(`productos-gas/${id}/`)
+export const getStockBajoGas = () => api.get('productos-gas/stock_bajo/')
+export const getPedidosGas = () => api.get('pedidos-gas/')
+export const solicitarGas = (data) => api.post('pedidos-gas/solicitar/', data)
+export const marcarPedidoGasRevisado = (id) => api.patch(`pedidos-gas/${id}/marcar_revisado/`)

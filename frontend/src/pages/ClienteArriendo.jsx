@@ -1,16 +1,38 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getMaquinas, getReservas, crearReserva, cancelarReserva } from '../api/arriendo'
+import { getMaquinas, getReservas, crearReserva, cancelarReserva, cotizarMaquina } from '../api/arriendo'
+import { getResponsables } from '../api/usuarios'
 import CalendarioDisponibilidad from '../components/CalendarioDisponibilidad'
+import CarritoGas from '../components/CarritoGas'
 import BadgeEstado from '../components/BadgeEstado'
+import fondoPanel from '../assets/fondo-panel.jpg'
+
+const ETIQUETA_TARIFA = {
+  dia: 'Tarifa diaria',
+  semana: 'Tarifa semanal (prorrateada por día)',
+  mes: 'Tarifa mensual (prorrateada por día)',
+}
 
 function preciosDeMaquina(m) {
   const precios = []
   if (m.precio_hora) precios.push(`$${Number(m.precio_hora).toLocaleString('es-CL')} / hora`)
   if (m.precio_dia) precios.push(`$${Number(m.precio_dia).toLocaleString('es-CL')} / día`)
   if (m.precio_semana) precios.push(`$${Number(m.precio_semana).toLocaleString('es-CL')} / semana`)
+  if (m.precio_mes) precios.push(`$${Number(m.precio_mes).toLocaleString('es-CL')} / mes`)
   return precios
+}
+
+function formatCLP(valor) {
+  return `$${Number(valor).toLocaleString('es-CL')}`
+}
+
+function AvisoDespacho() {
+  return (
+    <p className="text-xs text-gray-400 italic">
+      * Los precios no incluyen despacho de maquinaria.
+    </p>
+  )
 }
 
 export default function ClienteArriendo() {
@@ -18,6 +40,8 @@ export default function ClienteArriendo() {
   const navigate = useNavigate()
   const [maquinas, setMaquinas] = useState([])
   const [misReservas, setMisReservas] = useState([])
+  const [responsables, setResponsables] = useState([])
+  const [modo, setModo] = useState('maquinas') // 'maquinas' | 'gas'
   const [maquinaActiva, setMaquinaActiva] = useState(null)
   const [reservasDeEstaMaquina, setReservasDeEstaMaquina] = useState([])
   const [fechaInicio, setFechaInicio] = useState(null)
@@ -27,9 +51,46 @@ export default function ClienteArriendo() {
   const [cargando, setCargando] = useState(true)
   const [enviando, setEnviando] = useState(false)
 
+  const [cotizacion, setCotizacion] = useState(null)
+  const [errorCotizacion, setErrorCotizacion] = useState('')
+  const [cargandoCotizacion, setCargandoCotizacion] = useState(false)
+
   useEffect(() => {
     cargarDatos()
+    getResponsables().then((res) => setResponsables(res.data))
   }, [])
+
+  useEffect(() => {
+    if (!maquinaActiva || !fechaInicio) {
+      setCotizacion(null)
+      setErrorCotizacion('')
+      return
+    }
+
+    let cancelado = false
+    setCargandoCotizacion(true)
+    setErrorCotizacion('')
+
+    cotizarMaquina(maquinaActiva.id, fechaInicio, fechaFin || fechaInicio)
+      .then((res) => {
+        if (!cancelado) setCotizacion(res.data)
+      })
+      .catch((err) => {
+        if (!cancelado) {
+          setCotizacion(null)
+          setErrorCotizacion(
+            err.response?.data?.error || 'No se pudo calcular el precio para estas fechas'
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelado) setCargandoCotizacion(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [maquinaActiva, fechaInicio, fechaFin])
 
   async function cargarDatos() {
     setCargando(true)
@@ -48,6 +109,8 @@ export default function ClienteArriendo() {
     setFechaFin(null)
     setModalidad('RETIRO')
     setDireccion('')
+    setCotizacion(null)
+    setErrorCotizacion('')
     setReservasDeEstaMaquina(misReservas.filter((r) => r.maquina === maquina.id))
   }
 
@@ -63,8 +126,12 @@ export default function ClienteArriendo() {
   }
 
   async function handleReservar() {
-    if (modalidad === 'DELIVERY' && !direccion.trim()) {
+    if (modalidad === 'DESPACHO' && !direccion.trim()) {
       alert('Ingresa la dirección de entrega')
+      return
+    }
+    if (!cotizacion) {
+      alert('No se pudo calcular el precio para estas fechas')
       return
     }
     setEnviando(true)
@@ -74,7 +141,7 @@ export default function ClienteArriendo() {
         fecha_inicio: fechaInicio,
         fecha_fin: fechaFin || fechaInicio,
         modalidad_entrega: modalidad,
-        direccion_entrega: modalidad === 'DELIVERY' ? direccion : '',
+        direccion_entrega: modalidad === 'DESPACHO' ? direccion : '',
       })
       alert('Reserva enviada. Queda pendiente de aprobación del admin.')
       setMaquinaActiva(null)
@@ -97,8 +164,13 @@ export default function ClienteArriendo() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 w-full">
-      <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
+    <div className="relative min-h-screen w-full">
+      <div
+        className="fixed inset-0 -z-10 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${fondoPanel})` }}
+      />
+
+      <header className="relative z-10 w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button
             onClick={() => (maquinaActiva ? setMaquinaActiva(null) : navigate('/cliente'))}
@@ -116,20 +188,29 @@ export default function ClienteArriendo() {
         </div>
       </header>
 
-      <main className="w-full max-w-4xl mx-auto p-4 md:p-8">
+      <main className="relative z-10 w-full max-w-4xl mx-auto p-4 md:p-8">
         {cargando ? (
           <p className="text-dark">Cargando...</p>
         ) : maquinaActiva ? (
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <div className="bg-white rounded-lg shadow p-4 mb-4">
-                {maquinaActiva.imagen && (
-                  <img src={maquinaActiva.imagen} alt={maquinaActiva.nombre} className="w-full h-40 object-cover rounded mb-3" />
+              <div className="bg-white rounded-lg shadow overflow-hidden mb-4">
+                {maquinaActiva.imagen ? (
+                  <img src={maquinaActiva.imagen} alt={maquinaActiva.nombre} className="w-full h-48 object-cover" />
+                ) : (
+                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-300 text-sm">
+                    Sin imagen
+                  </div>
                 )}
-                <h2 className="font-bold text-dark text-lg">{maquinaActiva.nombre}</h2>
-                <p className="text-sm text-gray-600 mt-1">{maquinaActiva.descripcion}</p>
-                <div className="text-primary font-bold mt-2 space-y-0.5">
-                  {preciosDeMaquina(maquinaActiva).map((p, i) => <p key={i}>{p}</p>)}
+                <div className="p-4">
+                  <h2 className="font-bold text-dark text-lg">{maquinaActiva.nombre}</h2>
+                  <p className="text-sm text-gray-600 mt-1">{maquinaActiva.descripcion}</p>
+                  <div className="text-primary font-bold mt-2 space-y-0.5">
+                    {preciosDeMaquina(maquinaActiva).map((p, i) => <p key={i}>{p}</p>)}
+                  </div>
+                  <div className="mt-2">
+                    <AvisoDespacho />
+                  </div>
                 </div>
               </div>
               <CalendarioDisponibilidad
@@ -151,6 +232,37 @@ export default function ClienteArriendo() {
                 </p>
               </div>
 
+              {fechaInicio && (
+                <div className="border rounded-lg p-3 bg-gray-50">
+                  {cargandoCotizacion ? (
+                    <p className="text-sm text-gray-500">Calculando precio...</p>
+                  ) : errorCotizacion ? (
+                    <p className="text-sm text-danger font-medium">{errorCotizacion}</p>
+                  ) : cotizacion ? (
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs text-gray-500">
+                        {cotizacion.dias} día{cotizacion.dias === 1 ? '' : 's'} — {ETIQUETA_TARIFA[cotizacion.tarifa_aplicada]}
+                      </p>
+                      <div className="flex justify-between text-sm text-gray-700">
+                        <span>Neto</span>
+                        <span>{formatCLP(cotizacion.precio_neto)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-gray-700">
+                        <span>IVA (19%)</span>
+                        <span>{formatCLP(cotizacion.iva)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold text-dark border-t pt-1 mt-1">
+                        <span>Total</span>
+                        <span>{formatCLP(cotizacion.precio_total)}</span>
+                      </div>
+                      <div className="pt-1">
+                        <AvisoDespacho />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium mb-1 text-dark">¿Retira o entrega en obra?</label>
                 <div className="flex gap-2">
@@ -165,9 +277,9 @@ export default function ClienteArriendo() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setModalidad('DELIVERY')}
+                    onClick={() => setModalidad('DESPACHO')}
                     className={`flex-1 px-3 py-2 rounded text-sm font-medium ${
-                      modalidad === 'DELIVERY' ? 'bg-primary text-white' : 'bg-gray-100 text-dark'
+                      modalidad === 'DESPACHO' ? 'bg-primary text-white' : 'bg-gray-100 text-dark'
                     }`}
                   >
                     Entrega en obra
@@ -175,7 +287,7 @@ export default function ClienteArriendo() {
                 </div>
               </div>
 
-              {modalidad === 'DELIVERY' && (
+              {modalidad === 'DESPACHO' && (
                 <div>
                   <label className="block text-sm font-medium mb-1 text-dark">Dirección de entrega</label>
                   <input
@@ -189,7 +301,7 @@ export default function ClienteArriendo() {
 
               <button
                 onClick={handleReservar}
-                disabled={!fechaInicio || enviando}
+                disabled={!fechaInicio || !cotizacion || cargandoCotizacion || enviando}
                 className="w-full bg-primary text-white py-2 rounded hover:bg-primary-light font-medium disabled:opacity-50"
               >
                 {enviando ? 'Enviando...' : 'Solicitar reserva'}
@@ -199,29 +311,77 @@ export default function ClienteArriendo() {
               </p>
             </div>
           </div>
+        ) : modo === 'gas' ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-1 bg-white rounded-lg shadow p-1 w-fit">
+              <button
+                onClick={() => setModo('maquinas')}
+                className="px-4 py-1.5 rounded text-sm font-medium text-dark hover:bg-gray-50"
+              >
+                Máquinas
+              </button>
+              <button className="px-4 py-1.5 rounded text-sm font-medium bg-primary text-white">
+                Gas
+              </button>
+            </div>
+            <CarritoGas
+              responsables={responsables}
+              onEnviado={() => {
+                alert('Pedido de gas enviado. Queda pendiente de revisión.')
+                setModo('maquinas')
+              }}
+              onCancelar={() => setModo('maquinas')}
+            />
+          </div>
         ) : (
           <div className="flex flex-col gap-6">
+            <div className="flex gap-1 bg-white rounded-lg shadow p-1 w-fit">
+              <button className="px-4 py-1.5 rounded text-sm font-medium bg-primary text-white">
+                Máquinas
+              </button>
+              <button
+                onClick={() => setModo('gas')}
+                className="px-4 py-1.5 rounded text-sm font-medium text-dark hover:bg-gray-50"
+              >
+                Gas
+              </button>
+            </div>
+
             <div>
-              <h2 className="text-dark font-medium mb-3">Máquinas disponibles</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="text-dark font-medium">Máquinas disponibles</h2>
+              </div>
+              <div className="mb-3">
+                <AvisoDespacho />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {maquinas.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => abrirMaquina(m)}
-                    className="bg-white rounded-lg shadow p-4 text-left hover:shadow-md hover:-translate-y-0.5 transition"
+                    className="bg-white rounded-lg shadow overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition flex flex-col"
                   >
-                    {m.imagen && (
-                      <img src={m.imagen} alt={m.nombre} className="w-full h-32 object-cover rounded mb-2" />
-                    )}
-                    <h3 className="font-bold text-dark">{m.nombre}</h3>
-                    <p className="text-sm text-gray-500 mb-1">{m.descripcion}</p>
-                    <div className="text-primary font-bold text-sm space-y-0.5">
-                      {preciosDeMaquina(m).map((p, i) => <p key={i}>{p}</p>)}
+                    <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                      {m.imagen ? (
+                        <img src={m.imagen} alt={m.nombre} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-gray-300 text-xs">Sin imagen</span>
+                      )}
+                    </div>
+                    <div className="p-3 flex flex-col gap-1 flex-1">
+                      <h3 className="font-bold text-dark text-sm leading-tight">{m.nombre}</h3>
+                      {m.descripcion && (
+                        <p className="text-xs text-gray-500 line-clamp-2">{m.descripcion}</p>
+                      )}
+                      <div className="text-primary font-bold text-xs space-y-0.5 mt-auto pt-1">
+                        {preciosDeMaquina(m).map((p, i) => <p key={i}>{p}</p>)}
+                      </div>
                     </div>
                   </button>
                 ))}
                 {maquinas.length === 0 && (
-                  <p className="text-gray-500 col-span-2">No hay máquinas disponibles todavía.</p>
+                  <p className="text-gray-500 col-span-full">No hay máquinas disponibles todavía.</p>
                 )}
               </div>
             </div>
@@ -240,8 +400,13 @@ export default function ClienteArriendo() {
                         <p className="font-medium text-dark">{r.maquina_nombre}</p>
                         <p className="text-xs text-gray-500">{r.fecha_inicio} a {r.fecha_fin}</p>
                         <p className="text-xs text-gray-500">
-                          {r.modalidad_entrega === 'DELIVERY' ? `Entrega en obra: ${r.direccion_entrega}` : 'Retiro en local'}
+                          {r.modalidad_entrega === 'DESPACHO' ? `Entrega en obra: ${r.direccion_entrega}` : 'Retiro en local'}
                         </p>
+                        {r.precio_total && (
+                          <p className="text-xs text-primary font-medium mt-0.5">
+                            Total: {formatCLP(r.precio_total)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
                         <BadgeEstado estado={r.estado} />
