@@ -263,22 +263,20 @@ class ItemPedidoFerreteria(models.Model):
         return f"{self.nombre} x{self.cantidad}"
 
 class ProductoFlexible(models.Model):
-    class Tipo(models.TextChoices):
-        MANGUERA_R1 = 'MANGUERA_R1', 'Manguera R1'
-        MANGUERA_R2 = 'MANGUERA_R2', 'Manguera R2'
-        TERMINAL_JIC = 'TERMINAL_JIC', 'Terminal JIC'
-        TERMINAL_HEMBRA_RECTO = 'TERMINAL_HEMBRA_RECTO', 'Terminal Hembra Recto'
-        TERMINAL_MACHO_RECTO = 'TERMINAL_MACHO_RECTO', 'Terminal Macho Recto'
-        TERMINAL_H45 = 'TERMINAL_H45', 'Terminal H45'
-        TERMINAL_H90 = 'TERMINAL_H90', 'Terminal H90'
+    class Categoria(models.TextChoices):
+        MANGUERA = 'MANGUERA', 'Manguera'
+        TERMINAL = 'TERMINAL', 'Terminal'
         FERULA = 'FERULA', 'Férula'
 
     class Unidad(models.TextChoices):
         METRO = 'METRO', 'Metro'
         UNIDAD = 'UNIDAD', 'Unidad'
 
-    tipo = models.CharField(max_length=30, choices=Tipo.choices)
-    # Diámetro de la manguera/terminal/férula, ej: 1/2", 3/4", 1"
+    categoria = models.CharField(max_length=20, choices=Categoria.choices)
+    # Nombre libre dentro de la categoría: "R1", "R2" para mangueras;
+    # "JIC", "Hembra Recto", "H45", "H90", "Compacto", etc. para terminales.
+    # El admin puede agregar los que necesite, sin límite de tipos fijos.
+    nombre = models.CharField(max_length=100)
     diametro = models.CharField(max_length=20, blank=True)
     unidad_medida = models.CharField(max_length=10, choices=Unidad.choices)
     precio = models.DecimalField(max_digits=10, decimal_places=2)
@@ -288,10 +286,10 @@ class ProductoFlexible(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['tipo', 'diametro']
+        ordering = ['categoria', 'nombre', 'diametro']
 
     def __str__(self):
-        base = self.get_tipo_display()
+        base = f"{self.get_categoria_display()} {self.nombre}"
         if self.diametro:
             base += f" {self.diametro}"
         return base
@@ -302,26 +300,26 @@ class ProductoFlexible(models.Model):
 
 
 class FlexibleDetalle(models.Model):
-    class TipoManguera(models.TextChoices):
-        R1 = 'R1', 'R1'
-        R2 = 'R2', 'R2'
-
-    class TerminalTipo(models.TextChoices):
-        JIC = 'TERMINAL_JIC', 'JIC'
-        HEMBRA_RECTO = 'TERMINAL_HEMBRA_RECTO', 'Hembra Recto'
-        MACHO_RECTO = 'TERMINAL_MACHO_RECTO', 'Macho Recto'
-        H45 = 'TERMINAL_H45', 'H45'
-        H90 = 'TERMINAL_H90', 'H90'
-
     trabajo = models.OneToOneField(
         TrabajoMaestranza, on_delete=models.CASCADE, related_name='detalle_flexible'
     )
-    tipo_manguera = models.CharField(max_length=5, choices=TipoManguera.choices)
-    diametro = models.CharField(max_length=20)
+    manguera = models.ForeignKey(
+        ProductoFlexible, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='detalles_manguera'
+    )
     largo_metros = models.DecimalField(max_digits=6, decimal_places=2)
-    terminal_entrada = models.CharField(max_length=30, choices=TerminalTipo.choices, null=True, blank=True)
-    terminal_salida = models.CharField(max_length=30, choices=TerminalTipo.choices, null=True, blank=True)
-    cantidad_ferulas = models.PositiveSmallIntegerField(choices=[(1, '1'), (2, '2')], default=2)
+    terminal_entrada = models.ForeignKey(
+        ProductoFlexible, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='detalles_terminal_entrada'
+    )
+    terminal_salida = models.ForeignKey(
+        ProductoFlexible, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='detalles_terminal_salida'
+    )
+    ferula = models.ForeignKey(
+        ProductoFlexible, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='detalles_ferula'
+    )
     cantidad_ferulas = models.PositiveSmallIntegerField(choices=[(1, '1'), (2, '2')], default=2)
     precio_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
@@ -331,7 +329,7 @@ class FlexibleDetalle(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Flexible {self.tipo_manguera} {self.diametro} - {self.trabajo}"
+        return f"Flexible {self.manguera} - {self.trabajo}"
 
     def terminales_usados(self):
         return [t for t in [self.terminal_entrada, self.terminal_salida] if t]
@@ -340,83 +338,63 @@ class FlexibleDetalle(models.Model):
         if self.stock_descontado:
             return
 
-        tipo_manguera_map = {'R1': 'MANGUERA_R1', 'R2': 'MANGUERA_R2'}
+        if self.manguera:
+            self.manguera.stock_actual -= self.largo_metros
+            self.manguera.save()
 
-        manguera = ProductoFlexible.objects.filter(
-            tipo=tipo_manguera_map[self.tipo_manguera], diametro=self.diametro
-        ).first()
-        if manguera:
-            manguera.stock_actual -= self.largo_metros
-            manguera.save()
+        for terminal in self.terminales_usados():
+            terminal.stock_actual -= 1
+            terminal.save()
 
-        for terminal_tipo in self.terminales_usados():
-            terminal = ProductoFlexible.objects.filter(
-                tipo=terminal_tipo, diametro=self.diametro
-            ).first()
-            if terminal:
-                terminal.stock_actual -= 1
-                terminal.save()
-
-        ferula = ProductoFlexible.objects.filter(tipo='FERULA', diametro=self.diametro).first()
-        if ferula:
-            ferula.stock_actual -= self.cantidad_ferulas
-            ferula.save()
+        if self.ferula:
+            self.ferula.stock_actual -= self.cantidad_ferulas
+            self.ferula.save()
 
         self.stock_descontado = True
         self.save()
 
     def productos_faltantes(self):
         """
-        Devuelve una lista de descripciones de los productos que el trabajo
-        necesita pero que no existen (o no tienen suficiente stock) en el catálogo.
+        Devuelve descripciones de lo que falta seleccionar o de lo que no
+        tiene stock suficiente.
         """
         faltantes = []
-        tipo_manguera_map = {'R1': 'MANGUERA_R1', 'R2': 'MANGUERA_R2'}
 
-        manguera = ProductoFlexible.objects.filter(
-            tipo=tipo_manguera_map[self.tipo_manguera], diametro=self.diametro
-        ).first()
-        if not manguera:
-            faltantes.append(f"Manguera {self.tipo_manguera} {self.diametro}")
-        elif manguera.stock_actual < self.largo_metros:
-            faltantes.append(f"Manguera {self.tipo_manguera} {self.diametro} (stock insuficiente: {manguera.stock_actual}m disponibles, se necesitan {self.largo_metros}m)")
+        if not self.manguera:
+            faltantes.append("Falta seleccionar la manguera")
+        elif self.manguera.stock_actual < self.largo_metros:
+            faltantes.append(
+                f"{self.manguera} (stock insuficiente: {self.manguera.stock_actual}m disponibles, se necesitan {self.largo_metros}m)"
+            )
 
-        for terminal_tipo in self.terminales_usados():
-            terminal = ProductoFlexible.objects.filter(
-                tipo=terminal_tipo, diametro=self.diametro
-            ).first()
-            if not terminal:
-                faltantes.append(f"Terminal ({terminal_tipo}) {self.diametro}")
-            elif terminal.stock_actual < 1:
-                faltantes.append(f"Terminal ({terminal_tipo}) {self.diametro} (sin stock)")
+        if self.cantidad_ferulas == 2 and len(self.terminales_usados()) < 2:
+            faltantes.append("Falta seleccionar ambos terminales (entrada y salida)")
+        elif self.cantidad_ferulas == 1 and len(self.terminales_usados()) < 1:
+            faltantes.append("Falta seleccionar el terminal usado")
 
-        ferula = ProductoFlexible.objects.filter(tipo='FERULA', diametro=self.diametro).first()
-        if not ferula:
-            faltantes.append(f"Férula {self.diametro}")
-        elif ferula.stock_actual < self.cantidad_ferulas:
-            faltantes.append(f"Férula {self.diametro} (stock insuficiente: {ferula.stock_actual} disponibles, se necesitan {self.cantidad_ferulas})")
+        for terminal in self.terminales_usados():
+            if terminal.stock_actual < 1:
+                faltantes.append(f"{terminal} (sin stock)")
+
+        if not self.ferula:
+            faltantes.append("Falta seleccionar la férula")
+        elif self.ferula.stock_actual < self.cantidad_ferulas:
+            faltantes.append(
+                f"{self.ferula} (stock insuficiente: {self.ferula.stock_actual} disponibles, se necesitan {self.cantidad_ferulas})"
+            )
 
         return faltantes
 
     def calcular_precio_sugerido(self):
         total = Decimal('0')
-        tipo_manguera_map = {'R1': 'MANGUERA_R1', 'R2': 'MANGUERA_R2'}
 
-        manguera = ProductoFlexible.objects.filter(
-            tipo=tipo_manguera_map[self.tipo_manguera], diametro=self.diametro
-        ).first()
-        if manguera:
-            total += manguera.precio * self.largo_metros
+        if self.manguera:
+            total += self.manguera.precio * self.largo_metros
 
-        for terminal_tipo in self.terminales_usados():
-            terminal = ProductoFlexible.objects.filter(
-                tipo=terminal_tipo, diametro=self.diametro
-            ).first()
-            if terminal:
-                total += terminal.precio
+        for terminal in self.terminales_usados():
+            total += terminal.precio
 
-        ferula = ProductoFlexible.objects.filter(tipo='FERULA', diametro=self.diametro).first()
-        if ferula:
-            total += ferula.precio * self.cantidad_ferulas
+        if self.ferula:
+            total += self.ferula.precio * self.cantidad_ferulas
 
         return total

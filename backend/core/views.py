@@ -773,6 +773,9 @@ class ProductoFlexibleViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.rol != 'ADMIN':
             qs = qs.filter(activo=True)
+        categoria = self.request.query_params.get('categoria')
+        if categoria:
+            qs = qs.filter(categoria=categoria)
         return qs
 
     def get_permissions(self):

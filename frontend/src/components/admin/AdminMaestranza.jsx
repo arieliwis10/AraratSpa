@@ -433,8 +433,10 @@ export default function AdminMaestranza() {
                 <span className="text-xs font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 h-fit shrink-0">
                   #{t.correlativo}
                 </span>
-                <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
-                
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
+                  <p className="text-xs text-gray-500 truncate">{t.empresa_nombre || t.cliente_nombre}</p>
+                </div>
               </div>
               <div className="flex flex-col items-end gap-1 shrink-0">
                 <BadgeEstado estado={t.estado} />
@@ -446,7 +448,6 @@ export default function AdminMaestranza() {
               <div className="mt-3 pt-3 border-t">
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <p className="text-sm font-medium text-dark">{t.empresa_nombre || t.cliente_nombre}</p>
                     <p className="text-sm text-gray-600">{t.descripcion}</p>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500 mt-1">
                       <span>Avance: {t.avance}%</span>

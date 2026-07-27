@@ -96,25 +96,32 @@ class SolicitudMaterialSerializer(serializers.ModelSerializer):
 
 class ProductoFlexibleSerializer(serializers.ModelSerializer):
     stock_bajo = serializers.ReadOnlyField()
-    tipo_display = serializers.CharField(source='get_tipo_display', read_only=True)
+    categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
 
     class Meta:
         model = ProductoFlexible
         fields = [
-            'id', 'tipo', 'tipo_display', 'diametro', 'unidad_medida',
+            'id', 'categoria', 'categoria_display', 'nombre', 'diametro', 'unidad_medida',
             'precio', 'stock_actual', 'stock_minimo', 'stock_bajo', 'activo', 'created_at',
         ]
 
 
 class FlexibleDetalleSerializer(serializers.ModelSerializer):
     precio_sugerido = serializers.SerializerMethodField()
+    manguera_info = ProductoFlexibleSerializer(source='manguera', read_only=True)
+    terminal_entrada_info = ProductoFlexibleSerializer(source='terminal_entrada', read_only=True)
+    terminal_salida_info = ProductoFlexibleSerializer(source='terminal_salida', read_only=True)
+    ferula_info = ProductoFlexibleSerializer(source='ferula', read_only=True)
 
     class Meta:
         model = FlexibleDetalle
         fields = [
-            'id', 'trabajo', 'tipo_manguera', 'diametro', 'largo_metros',
-            'terminal_entrada', 'terminal_salida', 'cantidad_ferulas',
-            'precio_total', 'precio_sugerido',
+            'id', 'trabajo',
+            'manguera', 'manguera_info', 'largo_metros',
+            'terminal_entrada', 'terminal_entrada_info',
+            'terminal_salida', 'terminal_salida_info',
+            'ferula', 'ferula_info',
+            'cantidad_ferulas', 'precio_total', 'precio_sugerido',
         ]
         read_only_fields = ['trabajo']
 
@@ -126,7 +133,6 @@ class FlexibleDetalleSerializer(serializers.ModelSerializer):
         entrada = data.get('terminal_entrada', getattr(self.instance, 'terminal_entrada', None))
         salida = data.get('terminal_salida', getattr(self.instance, 'terminal_salida', None))
 
-        # Solo validamos si viene alguno de estos campos en el request (para no romper el guardado de solo precio_total)
         if cantidad is not None and ('terminal_entrada' in data or 'terminal_salida' in data or 'cantidad_ferulas' in data):
             if cantidad == 2 and not (entrada and salida):
                 raise serializers.ValidationError('Con manguera completa (2 férulas) debes indicar el terminal de entrada y de salida.')

@@ -3,9 +3,9 @@ import {
   getProductosFlexibles, crearProductoFlexible, actualizarProductoFlexible,
   eliminarProductoFlexible, getStockBajoFlexibles, getTrabajos, guardarDetalleFlexible
 } from '../../api/maestranza'
-import { DIAMETROS_FLEXIBLE, TIPOS_PRODUCTO_FLEXIBLE } from '../../constants/flexibles'
+import { DIAMETROS_FLEXIBLE, CATEGORIAS_PRODUCTO_FLEXIBLE } from '../../constants/flexibles'
 
-const FORM_VACIO = { tipo: 'MANGUERA_R1', diametro: '1/2"', precio: '', stock_actual: '', stock_minimo: '5' }
+const FORM_VACIO = { categoria: 'MANGUERA', nombre: '', diametro: '1/2"', unidad_medida: 'METRO', precio: '', stock_actual: '', stock_minimo: '5' }
 
 export default function AdminFlexibles() {
   const [tab, setTab] = useState('productos')
@@ -47,6 +47,7 @@ function ProductosFlexibles() {
   const [editandoId, setEditandoId] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
+  const [filtroCategoria, setFiltroCategoria] = useState('TODAS')
 
   useEffect(() => {
     cargar()
@@ -66,21 +67,25 @@ function ProductosFlexibles() {
     }
   }
 
-  function tipoInfo(tipoValue) {
-    return TIPOS_PRODUCTO_FLEXIBLE.find((t) => t.value === tipoValue)
+  function categoriaInfo(categoriaValue) {
+    return CATEGORIAS_PRODUCTO_FLEXIBLE.find((c) => c.value === categoriaValue)
   }
 
-  function handleTipoChange(tipo) {
-    const info = tipoInfo(tipo)
-    setForm({ ...form, tipo, unidad_medida: info?.unidad })
+  function handleCategoriaChange(categoria) {
+    const info = categoriaInfo(categoria)
+    setForm({ ...form, categoria, unidad_medida: info?.unidad })
   }
 
   async function handleGuardar() {
+    if (!form.nombre.trim()) {
+      alert('Escribe el nombre del producto (ej: R1, JIC, Hembra Recto...)')
+      return
+    }
     if (!form.precio || form.stock_actual === '') {
       alert('Completa precio y stock')
       return
     }
-    const info = tipoInfo(form.tipo)
+    const info = categoriaInfo(form.categoria)
     const payload = { ...form, unidad_medida: info.unidad }
     try {
       if (editandoId) {
@@ -99,12 +104,15 @@ function ProductosFlexibles() {
   function handleEditar(producto) {
     setEditandoId(producto.id)
     setForm({
-      tipo: producto.tipo,
+      categoria: producto.categoria,
+      nombre: producto.nombre,
       diametro: producto.diametro,
+      unidad_medida: producto.unidad_medida,
       precio: producto.precio,
       stock_actual: producto.stock_actual,
       stock_minimo: producto.stock_minimo,
     })
+    setMostrarFormulario(true)
   }
 
   async function handleEliminar(id) {
@@ -122,6 +130,10 @@ function ProductosFlexibles() {
     setForm(FORM_VACIO)
   }
 
+  const productosFiltrados = filtroCategoria === 'TODAS'
+    ? productos
+    : productos.filter((p) => p.categoria === filtroCategoria)
+
   return (
     <>
       {stockBajoIds.length > 0 && (
@@ -132,7 +144,7 @@ function ProductosFlexibles() {
         </div>
       )}
 
-<div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
         <button
           type="button"
           onClick={() => setMostrarFormulario(!mostrarFormulario)}
@@ -146,18 +158,28 @@ function ProductosFlexibles() {
 
         {mostrarFormulario && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-3">
               <div>
-                <label className="block text-xs font-medium mb-1 text-dark">Tipo</label>
+                <label className="block text-xs font-medium mb-1 text-dark">Categoría</label>
                 <select
-                  value={form.tipo}
-                  onChange={(e) => handleTipoChange(e.target.value)}
+                  value={form.categoria}
+                  onChange={(e) => handleCategoriaChange(e.target.value)}
                   className="w-full border rounded p-2 text-sm"
                 >
-                  {TIPOS_PRODUCTO_FLEXIBLE.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                  {CATEGORIAS_PRODUCTO_FLEXIBLE.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1 text-dark">Nombre</label>
+                <input
+                  type="text"
+                  placeholder="Ej: R1, JIC, Hembra Recto..."
+                  value={form.nombre}
+                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                  className="w-full border rounded p-2 text-sm"
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1 text-dark">Diámetro</label>
@@ -213,11 +235,29 @@ function ProductosFlexibles() {
         )}
       </div>
 
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setFiltroCategoria('TODAS')}
+          className={`px-3 py-1.5 rounded text-xs font-medium ${filtroCategoria === 'TODAS' ? 'bg-dark text-white' : 'bg-white text-dark border'}`}
+        >
+          Todas
+        </button>
+        {CATEGORIAS_PRODUCTO_FLEXIBLE.map((c) => (
+          <button
+            key={c.value}
+            onClick={() => setFiltroCategoria(c.value)}
+            className={`px-3 py-1.5 rounded text-xs font-medium ${filtroCategoria === c.value ? 'bg-dark text-white' : 'bg-white text-dark border'}`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
       {cargando ? (
         <p className="text-dark">Cargando...</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {productos.map((p) => (
+          {productosFiltrados.map((p) => (
             <div
               key={p.id}
               className={`bg-white rounded-lg shadow p-3 flex justify-between items-center ${
@@ -225,7 +265,10 @@ function ProductosFlexibles() {
               }`}
             >
               <div>
-                <p className="text-sm font-bold text-dark">{p.tipo_display} {p.diametro}</p>
+                <p className="text-sm font-bold text-dark">
+                  <span className="text-xs text-gray-400 font-normal mr-1">{p.categoria_display}</span>
+                  {p.nombre} {p.diametro}
+                </p>
                 <p className="text-xs text-gray-500">
                   ${Number(p.precio).toLocaleString('es-CL')} · Stock: {p.stock_actual} {p.unidad_medida === 'METRO' ? 'm' : 'un'}
                   {p.stock_bajo && <span className="text-danger font-bold"> · ⚠️ Stock bajo</span>}
@@ -241,6 +284,9 @@ function ProductosFlexibles() {
               </div>
             </div>
           ))}
+          {productosFiltrados.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-6">No hay productos en esta categoría todavía.</p>
+          )}
         </div>
       )}
     </>
@@ -312,17 +358,20 @@ function PedidosFlexibles() {
             </div>
 
             <div className="text-xs text-gray-600 grid grid-cols-2 gap-1 mb-3 bg-gray-50 rounded p-2">
-              <span>Manguera: {d.tipo_manguera} {d.diametro}</span>
+              <span>Manguera: {d.manguera_info ? `${d.manguera_info.nombre} ${d.manguera_info.diametro}` : '—'}</span>
               <span>Largo: {d.largo_metros} m</span>
               {d.cantidad_ferulas === 2 ? (
                 <>
-                  <span>Terminal entrada: {d.terminal_entrada}</span>
-                  <span>Terminal salida: {d.terminal_salida}</span>
+                  <span>Terminal entrada: {d.terminal_entrada_info?.nombre || '—'}</span>
+                  <span>Terminal salida: {d.terminal_salida_info?.nombre || '—'}</span>
                 </>
               ) : (
-                <span>Terminal: {d.terminal_entrada || d.terminal_salida} ({d.terminal_entrada ? 'entrada' : 'salida'})</span>
+                <span>
+                  Terminal: {(d.terminal_entrada_info || d.terminal_salida_info)?.nombre || '—'}
+                  {' '}({d.terminal_entrada_info ? 'entrada' : 'salida'})
+                </span>
               )}
-              <span>Férulas: {d.cantidad_ferulas}</span>
+              <span>Férula: {d.ferula_info?.nombre || '—'} · Cantidad: {d.cantidad_ferulas}</span>
             </div>
 
             <div className="flex items-end gap-3">
