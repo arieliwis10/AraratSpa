@@ -319,7 +319,7 @@ function SeccionProductos() {
   )
 }
 
-function SeccionPedidos() {
+function SeccionPedidos({ onPendientesChange }) {
   const [pedidos, setPedidos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [filtroCategoria, setFiltroCategoria] = useState('TODAS')
@@ -336,6 +336,9 @@ function SeccionPedidos() {
     try {
       const res = await getPedidosFerreteria()
       setPedidos(res.data)
+      if (onPendientesChange) {
+        onPendientesChange(res.data.filter((p) => p.estado === 'PENDIENTE').length)
+      }
     } finally {
       setCargando(false)
     }
@@ -466,6 +469,13 @@ function SeccionPedidos() {
 
 export default function AdminFerreteria() {
   const [subTab, setSubTab] = useState('productos')
+  const [pedidosPendientes, setPedidosPendientes] = useState(0)
+
+  useEffect(() => {
+    getPedidosFerreteria().then((res) => {
+      setPedidosPendientes(res.data.filter((p) => p.estado === 'PENDIENTE').length)
+    })
+  }, [])
 
   return (
     <div className="w-full flex flex-col gap-4">
@@ -480,15 +490,20 @@ export default function AdminFerreteria() {
         </button>
         <button
           onClick={() => setSubTab('pedidos')}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${
+          className={`relative px-4 py-1.5 rounded text-sm font-medium ${
             subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'
           }`}
         >
           Pedidos
+          {pedidosPendientes > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-danger text-white text-[10px] leading-none rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+              {pedidosPendientes > 9 ? '9+' : pedidosPendientes}
+            </span>
+          )}
         </button>
       </div>
 
-      {subTab === 'productos' ? <SeccionProductos /> : <SeccionPedidos />}
+      {subTab === 'productos' ? <SeccionProductos /> : <SeccionPedidos onPendientesChange={setPedidosPendientes} />}
     </div>
   )
 }

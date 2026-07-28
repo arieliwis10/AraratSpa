@@ -38,6 +38,15 @@ function formatSolicitado(createdAt) {
   return `${obtener('day')}-${obtener('month')}-${obtener('year')} ${obtener('hour')}:${obtener('minute')}`
 }
 
+function BadgeContador({ count }) {
+  if (!count) return null
+  return (
+    <span className="absolute -top-1.5 -right-1.5 bg-danger text-white text-[10px] leading-none rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
 function ProductosMaquinas() {
   const [maquinas, setMaquinas] = useState([])
   const [mostrarForm, setMostrarForm] = useState(false)
@@ -236,7 +245,7 @@ function ProductosMaquinas() {
   )
 }
 
-function PedidosMaquinas() {
+function PedidosMaquinas({ onPendientesChange }) {
   const [reservas, setReservas] = useState([])
   const [clientes, setClientes] = useState([])
   const [filtroCliente, setFiltroCliente] = useState('')
@@ -256,6 +265,11 @@ function PedidosMaquinas() {
       const params = filtroCliente ? { cliente: filtroCliente } : {}
       const res = await getReservas(params)
       setReservas(res.data)
+      // Solo actualizamos el badge global con el conteo SIN filtrar por cliente,
+      // para que siga reflejando el total real de pendientes.
+      if (onPendientesChange && !filtroCliente) {
+        onPendientesChange(res.data.filter((r) => r.estado === 'PENDIENTE').length)
+      }
     } finally {
       setCargando(false)
     }
@@ -339,7 +353,7 @@ function PedidosMaquinas() {
   )
 }
 
-function VistaMaquinas() {
+function VistaMaquinas({ pendientesCount, onPendientesChange }) {
   const [subTab, setSubTab] = useState('productos')
 
   return (
@@ -353,13 +367,14 @@ function VistaMaquinas() {
         </button>
         <button
           onClick={() => setSubTab('pedidos')}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+          className={`relative px-4 py-1.5 rounded text-sm font-medium ${subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
         >
           Pedidos
+          <BadgeContador count={pendientesCount} />
         </button>
       </div>
 
-      {subTab === 'productos' ? <ProductosMaquinas /> : <PedidosMaquinas />}
+      {subTab === 'productos' ? <ProductosMaquinas /> : <PedidosMaquinas onPendientesChange={onPendientesChange} />}
     </div>
   )
 }
@@ -536,7 +551,7 @@ function SeccionProductosGas({ onStockBajoChange }) {
   )
 }
 
-function SeccionPedidosGas() {
+function SeccionPedidosGas({ onPendientesChange }) {
   const [pedidos, setPedidos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [procesando, setProcesando] = useState(null)
@@ -550,6 +565,9 @@ function SeccionPedidosGas() {
     try {
       const res = await getPedidosGas()
       setPedidos(res.data)
+      if (onPendientesChange) {
+        onPendientesChange(res.data.filter((p) => p.estado === 'PENDIENTE').length)
+      }
     } finally {
       setCargando(false)
     }
@@ -608,7 +626,7 @@ function SeccionPedidosGas() {
   )
 }
 
-function VistaGas() {
+function VistaGas({ pendientesCount, onPendientesChange }) {
   const [subTab, setSubTab] = useState('productos')
   const [stockBajoCount, setStockBajoCount] = useState(0)
 
@@ -630,37 +648,57 @@ function VistaGas() {
         </button>
         <button
           onClick={() => setSubTab('pedidos')}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+          className={`relative px-4 py-1.5 rounded text-sm font-medium ${subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
         >
           Pedidos
+          <BadgeContador count={pendientesCount} />
         </button>
       </div>
-      {subTab === 'productos' ? <SeccionProductosGas onStockBajoChange={setStockBajoCount} /> : <SeccionPedidosGas />}
+      {subTab === 'productos' ? <SeccionProductosGas onStockBajoChange={setStockBajoCount} /> : <SeccionPedidosGas onPendientesChange={onPendientesChange} />}
     </div>
   )
 }
 
 export default function AdminMaquinas() {
   const [seccion, setSeccion] = useState('maquinas')
+  const [reservasPendientes, setReservasPendientes] = useState(0)
+  const [pedidosGasPendientes, setPedidosGasPendientes] = useState(0)
+
+  // Conteo inicial al montar, independiente de qué sub-pestaña esté activa,
+  // para que el badge aparezca desde el primer momento sin tener que navegar.
+  useEffect(() => {
+    getReservas().then((res) => {
+      setReservasPendientes(res.data.filter((r) => r.estado === 'PENDIENTE').length)
+    })
+    getPedidosGas().then((res) => {
+      setPedidosGasPendientes(res.data.filter((p) => p.estado === 'PENDIENTE').length)
+    })
+  }, [])
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-1 bg-white rounded-lg shadow p-1 w-fit">
         <button
           onClick={() => setSeccion('maquinas')}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${seccion === 'maquinas' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+          className={`relative px-4 py-1.5 rounded text-sm font-medium ${seccion === 'maquinas' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
         >
           Máquinas
+          <BadgeContador count={reservasPendientes} />
         </button>
         <button
           onClick={() => setSeccion('gas')}
-          className={`px-4 py-1.5 rounded text-sm font-medium ${seccion === 'gas' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+          className={`relative px-4 py-1.5 rounded text-sm font-medium ${seccion === 'gas' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
         >
           Gas
+          <BadgeContador count={pedidosGasPendientes} />
         </button>
       </div>
 
-      {seccion === 'maquinas' ? <VistaMaquinas /> : <VistaGas />}
+      {seccion === 'maquinas' ? (
+        <VistaMaquinas pendientesCount={reservasPendientes} onPendientesChange={setReservasPendientes} />
+      ) : (
+        <VistaGas pendientesCount={pedidosGasPendientes} onPendientesChange={setPedidosGasPendientes} />
+      )}
     </div>
   )
 }

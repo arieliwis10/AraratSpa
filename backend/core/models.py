@@ -529,3 +529,73 @@ class ItemPedidoGas(models.Model):
 
     def __str__(self):
         return f"{self.nombre} x{self.cantidad}"
+
+class Cotizacion(models.Model):
+    """
+    Registro de una cotización generada desde un trabajo de Maestranza.
+    Se guarda al momento de generar el PDF, para poder consultarla o
+    volver a descargarla después sin tener que rehacerla desde cero.
+    """
+    trabajo = models.ForeignKey(
+        TrabajoMaestranza, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones'
+    )
+    empresa = models.ForeignKey(
+        Empresa, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones'
+    )
+    creado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones_creadas'
+    )
+
+    folio = models.CharField(max_length=20)
+    obra = models.CharField(max_length=255, blank=True)
+    mandante = models.CharField(max_length=255, blank=True)
+    lugar_trabajo = models.CharField(max_length=255, blank=True)
+    validez_dias = models.PositiveIntegerField(default=10)
+    items = models.JSONField(default=list)  # [{detalle, cantidad, precioUnitario}]
+    notas = models.TextField(blank=True)
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    iva = models.DecimalField(max_digits=12, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Cotización {self.folio} — {self.empresa or self.mandante}"
+
+class TareaAgenda(models.Model):
+    """
+    Tarea/nota de agenda, con fecha y hora opcional. El admin la crea y
+    puede asignarla a un trabajador; si no se asigna a nadie, queda como
+    tarea general del admin. Puede vincularse opcionalmente a un trabajo
+    de Maestranza existente.
+    """
+    titulo = models.CharField(max_length=200)
+    descripcion = models.TextField(blank=True)
+    fecha = models.DateField()
+    hora = models.TimeField(null=True, blank=True)
+
+    asignado_a = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='tareas_asignadas', limit_choices_to={'rol': 'TRABAJADOR'}
+    )
+    creado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='tareas_creadas'
+    )
+    trabajo = models.ForeignKey(
+        TrabajoMaestranza, on_delete=models.SET_NULL, null=True, blank=True, related_name='tareas_agenda'
+    )
+
+    completada = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['fecha', 'hora']
+
+    def __str__(self):
+        return f"{self.titulo} ({self.fecha})"

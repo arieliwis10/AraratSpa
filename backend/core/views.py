@@ -4,18 +4,20 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import EmailMultiAlternatives
 from django.db import models
+from rest_framework.views import APIView
 
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
     TrabajoMaestranzaSerializer, MaterialUsadoSerializer, ComentarioTrabajoSerializer,
     SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
     ProductoFerreteriaSerializer, PedidoFerreteriaSerializer, ItemPedidoFerreteriaSerializer,
-    ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer
+    ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer,
+    CotizacionSerializer, TareaAgendaSerializer
 )
 
 
@@ -921,3 +923,82 @@ class PedidoGasViewSet(viewsets.ModelViewSet):
             pedido.estado = 'REVISADO'
             pedido.save()
         return Response(PedidoGasSerializer(pedido).data)
+
+class ResumenPendientesView(APIView):
+    """Cuenta de ítems pendientes por sección, para las alertas del panel admin."""
+    permission_classes = [EsAdmin]
+
+    def get(self, request):
+        maestranza_por_aprobar_o_asignar = TrabajoMaestranza.objects.filter(
+            models.Q(aprobado=False) | models.Q(estado='PENDIENTE', asignado_a__isnull=True)
+        ).exclude(estado='TERMINADO').count()
+
+        solicitudes_por_revisar = SolicitudMaterial.objects.filter(estado='REVISION').count()
+
+        return Response({
+            'maestranza': maestranza_por_aprobar_o_asignar + solicitudes_por_revisar,
+            'ferreteria': PedidoFerreteria.objects.filter(
+                estado=PedidoFerreteria.Estado.PENDIENTE
+            ).count(),
+            'flexibles': ProductoFlexible.objects.filter(
+                activo=True, stock_actual__lte=models.F('stock_minimo')
+            ).count(),
+            'maquinas': ReservaMaquina.objects.filter(
+                estado=ReservaMaquina.Estado.PENDIENTE
+            ).count(),
+            'compras': SolicitudMaterial.objects.filter(
+                estado='PENDIENTE'
+            ).count(),
+        })
+
+class CotizacionViewSet(viewsets.ModelViewSet):
+    serializer_class = CotizacionSerializer
+    permission_classes = [EsAdmin]
+
+    def get_queryset(self):
+        return Cotizacion.objects.select_related('trabajo', 'empresa').all()
+
+    def perform_create(self, serializer):
+        trabajo = serializer.validated_data.get('trabajo')
+        empresa = trabajo.cliente.empresa if trabajo and trabajo.cliente else None
+        serializer.save(empresa=empresa, creado_por=self.request.user)
+
+class TareaAgendaViewSet(viewsets.ModelViewSet):
+    serializer_class = TareaAgendaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.rol == 'ADMIN':
+            qs = TareaAgenda.objects.all()
+        elif user.rol == 'TRABAJADOR':
+            qs = TareaAgenda.objects.filter(asignado_a=user)
+        else:
+            return TareaAgenda.objects.none()
+
+        mes = self.request.query_params.get('mes')  # formato "YYYY-MM"
+        if mes and '-' in mes:
+            anio_str, mes_str = mes.split('-')
+            try:
+                qs = qs.filter(fecha__year=int(anio_str), fecha__month=int(mes_str))
+            except ValueError:
+                pass
+        return qs
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def perform_create(self, serializer):
+        serializer.save(creado_por=self.request.user)
+
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def marcar_completada(self, request, pk=None):
+        tarea = self.get_object()
+        user = request.user
+        if user.rol != 'ADMIN' and tarea.asignado_a_id != user.id:
+            return Response({'error': 'No autorizado'}, status=403)
+        tarea.completada = not tarea.completada
+        tarea.save()
+        return Response(TareaAgendaSerializer(tarea).data)

@@ -7,7 +7,7 @@ import { getUsuarios, getEmpresas } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
 import CotizacionModal from '../CotizacionModal'
 
-export default function AdminMaestranza() {
+export default function AdminMaestranza({ onActualizarPendientes }) {
   const [trabajos, setTrabajos] = useState([])
   const [empresas, setEmpresas] = useState([])
   const [trabajadores, setTrabajadores] = useState([])
@@ -47,6 +47,7 @@ export default function AdminMaestranza() {
   async function cargarSolicitudesRevision() {
     const res = await getSolicitudesMaterial()
     setSolicitudesRevision(res.data.filter((s) => s.estado === 'REVISION'))
+    onActualizarPendientes?.()
   }
 
   async function handleBodega(id) {
@@ -79,6 +80,7 @@ export default function AdminMaestranza() {
     } finally {
       setCargando(false)
     }
+    onActualizarPendientes?.()
   }
 
   function toggleExpandido(id) {

@@ -1,8 +1,10 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 from .views import (
     UsuarioViewSet, EmpresaViewSet, ResponsableViewSet, TrabajoMaestranzaViewSet,
     MaquinaViewSet, ReservaMaquinaViewSet, SolicitudMaterialViewSet,
-    ProductoFerreteriaViewSet, PedidoFerreteriaViewSet, ProductoFlexibleViewSet, ProductoGasViewSet, PedidoGasViewSet
+    ProductoFerreteriaViewSet, PedidoFerreteriaViewSet, ProductoFlexibleViewSet, ProductoGasViewSet, PedidoGasViewSet,
+    ResumenPendientesView, CotizacionViewSet, TareaAgendaViewSet
 )
 
 router = DefaultRouter()
@@ -18,5 +20,9 @@ router.register('pedidos-ferreteria', PedidoFerreteriaViewSet, basename='pedido-
 router.register(r'productos-flexibles', ProductoFlexibleViewSet, basename='productos-flexibles')
 router.register(r'productos-gas', ProductoGasViewSet, basename='producto-gas')
 router.register(r'pedidos-gas', PedidoGasViewSet, basename='pedido-gas')
+router.register(r'cotizaciones', CotizacionViewSet, basename='cotizacion')
+router.register(r'tareas-agenda', TareaAgendaViewSet, basename='tarea-agenda')
 
-urlpatterns = router.urls
+urlpatterns = router.urls + [
+    path('resumen-pendientes/', ResumenPendientesView.as_view(), name='resumen-pendientes'),
+]

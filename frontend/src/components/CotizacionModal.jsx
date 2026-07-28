@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
+import { generarCotizacionPDF } from '../utils/generarCotizacionPDF'
+import { crearCotizacion } from '../api/cotizaciones'
 
 function claveMesActual() {
   const fecha = new Date()
@@ -44,6 +44,7 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
   )
   const [notas, setNotas] = useState('')
   const [folioAsignado, setFolioAsignado] = useState(null)
+  const [guardando, setGuardando] = useState(false)
 
   const fechaFormateada = new Date().toLocaleDateString('es-CL')
 
@@ -76,132 +77,49 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
     return `$${Math.round(valor).toLocaleString('es-CL')}`
   }
 
-  function generarPDF() {
+  async function generarPDF() {
     // El folio se asigna recién al generar (no al abrir el modal), para no
     // "quemar" números si el admin abre y cierra sin llegar a generar el PDF.
     const folio = folioAsignado || siguienteFolio()
     if (!folioAsignado) setFolioAsignado(folio)
 
     const { subtotal, iva, total } = calcularTotales()
-    const doc = new jsPDF()
-    const pageWidth = doc.internal.pageSize.getWidth()
 
-    // Membrete: franja negra + acento rojo, con espacio reservado para el logo a la izquierda
-    doc.setFillColor(15, 15, 15)
-    doc.rect(0, 0, pageWidth, 28, 'F')
-    doc.setFillColor(190, 30, 30)
-    doc.rect(0, 28, pageWidth, 2, 'F')
-
-    // Casillero blanco reservado para el logo (arriba a la izquierda)
-    doc.setFillColor(255, 255, 255)
-    doc.rect(8, 4, 32, 20, 'F')
-    doc.setDrawColor(180, 180, 180)
-    doc.rect(8, 4, 32, 20)
-
-    // Texto del membrete, desplazado a la derecha del casillero del logo
-    const textoX = 46
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(12)
-    doc.text('ARARAT ESTRUCTURAS METÁLICAS SPA.', textoX, 11)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.text('La Rinconada de Huelquén Sitio 4 Lote B, Paine', textoX, 17)
-    doc.text('RUT: 77.145.132-2   /   Cel: +569 99405462', textoX, 22)
-
-    doc.setFontSize(8)
-    doc.text('fcepeda@araratchile.com', pageWidth - 60, 9)
-    doc.text('ventas@araratchile.com', pageWidth - 60, 13)
-    doc.text('www.araratchile.com', pageWidth - 60, 17)
-
-    doc.setTextColor(0, 0, 0)
-
-    // Tabla de datos generales, en formato de casillas (como Excel)
-    autoTable(doc, {
-      startY: 36,
-      body: [
-        ['N° Cotización', folio],
-        ['Fecha', fechaFormateada],
-        ['Orden de trabajo', `${trabajo.categoria_display} #${trabajo.correlativo}`],
-        ['Obra', obra || '-'],
-        ['Mandante', mandante || '-'],
-        ['Lugar de trabajo', lugarTrabajo || '-'],
-      ],
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 2.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 45, fillColor: [240, 240, 240] },
-        1: { cellWidth: pageWidth - 45 - 20 },
-      },
-      margin: { left: 10, right: 10 },
+    generarCotizacionPDF({
+      folio,
+      fechaFormateada,
+      trabajoLabel: `${trabajo.categoria_display} #${trabajo.correlativo}`,
+      obra,
+      mandante,
+      lugarTrabajo,
+      items,
+      notas,
+      validezDias,
     })
 
-    let y = doc.lastAutoTable.finalY + 6
-
-    // Tabla de ítems, también en formato de casillas
-    const filas = items
-      .filter((it) => it.detalle)
-      .map((it, i) => [
-        String(i + 1),
-        it.detalle,
-        it.cantidad || '1',
-        formatoCLP(parseFloat(it.precioUnitario) || 0),
-        formatoCLP(totalItem(it)),
-      ])
-
-    autoTable(doc, {
-      startY: y,
-      head: [['Ítem', 'Detalle', 'Cant.', 'Precio', 'Total']],
-      body: filas,
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2.5 },
-      headStyles: { fillColor: [15, 15, 15], textColor: 255 },
-      columnStyles: {
-        0: { cellWidth: 12 },
-        2: { cellWidth: 16 },
-        3: { cellWidth: 28 },
-        4: { cellWidth: 28 },
-      },
-      margin: { left: 10, right: 10 },
-    })
-
-    y = doc.lastAutoTable.finalY + 6
-
-    doc.setFontSize(8)
-    doc.text(`Cotización válida solo por ${validezDias} días hábiles`, 10, y + 4)
-
-    // Tabla de totales, alineada a la derecha, también en casillas
-    autoTable(doc, {
-      startY: y,
-      body: [
-        ['Valor neto', formatoCLP(subtotal)],
-        ['IVA (19%)', formatoCLP(iva)],
-        ['TOTAL', formatoCLP(total)],
-      ],
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 2.5 },
-      columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: 32 },
-        1: { cellWidth: 32, halign: 'right' },
-      },
-      margin: { left: pageWidth - 74, right: 10 },
-      didParseCell: (data) => {
-        if (data.row.index === 2) {
-          data.cell.styles.fillColor = [190, 255, 190]
-          data.cell.styles.fontStyle = 'bold'
-          data.cell.styles.fontSize = 10
-        }
-      },
-    })
-
-    y = doc.lastAutoTable.finalY + 8
-
-    if (notas) {
-      doc.setFontSize(8)
-      doc.text(`Nota: ${notas}`, 10, y)
+    setGuardando(true)
+    try {
+      await crearCotizacion({
+        trabajo: trabajo.id,
+        folio,
+        obra,
+        mandante,
+        lugar_trabajo: lugarTrabajo,
+        validez_dias: validezDias,
+        items,
+        notas,
+        subtotal,
+        iva,
+        total,
+      })
+    } catch (err) {
+      // El PDF ya se descargó igual; si falla el guardado, no bloqueamos al
+      // admin, pero esta cotización no va a aparecer después en la pestaña
+      // "Cotizaciones".
+      console.error('No se pudo guardar la cotización para consultarla después', err)
+    } finally {
+      setGuardando(false)
     }
-
-    doc.save(`cotizacion_${folio}.pdf`)
   }
 
   return (
@@ -308,9 +226,10 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
           </button>
           <button
             onClick={generarPDF}
-            className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light"
+            disabled={guardando}
+            className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-60"
           >
-            Generar PDF
+            {guardando ? 'Guardando...' : 'Generar PDF'}
           </button>
         </div>
       </div>

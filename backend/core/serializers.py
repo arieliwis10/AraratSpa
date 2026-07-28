@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda
 )
 
 
@@ -183,11 +183,14 @@ class MaquinaSerializer(serializers.ModelSerializer):
 class ReservaMaquinaSerializer(serializers.ModelSerializer):
     maquina_nombre = serializers.CharField(source='maquina.nombre', read_only=True)
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa = serializers.IntegerField(source='cliente.empresa.id', read_only=True, default=None)
+    empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
 
     class Meta:
         model = ReservaMaquina
         fields = [
             'id', 'maquina', 'maquina_nombre', 'cliente', 'cliente_nombre',
+            'empresa', 'empresa_nombre',
             'fecha_inicio', 'fecha_fin', 'modalidad_entrega', 'direccion_entrega',
             'estado', 'dias', 'tarifa_aplicada', 'precio_neto', 'iva', 'precio_total',
             'created_at'
@@ -209,6 +212,7 @@ class ItemPedidoFerreteriaSerializer(serializers.ModelSerializer):
 
 class PedidoFerreteriaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa = serializers.IntegerField(source='cliente.empresa.id', read_only=True, default=None)
     empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
     responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
     categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
@@ -218,7 +222,7 @@ class PedidoFerreteriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = PedidoFerreteria
         fields = [
-            'id', 'cliente', 'cliente_nombre', 'empresa_nombre',
+            'id', 'cliente', 'cliente_nombre', 'empresa', 'empresa_nombre',
             'responsable', 'responsable_nombre', 'categoria', 'categoria_display',
             'centro_costo', 'estado', 'estado_display', 'items', 'created_at'
         ]
@@ -242,6 +246,7 @@ class ItemPedidoGasSerializer(serializers.ModelSerializer):
 
 class PedidoGasSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
+    empresa = serializers.IntegerField(source='cliente.empresa.id', read_only=True, default=None)
     empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
     responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
     estado_display = serializers.CharField(source='get_estado_display', read_only=True)
@@ -250,8 +255,37 @@ class PedidoGasSerializer(serializers.ModelSerializer):
     class Meta:
         model = PedidoGas
         fields = [
-            'id', 'cliente', 'cliente_nombre', 'empresa_nombre',
+            'id', 'cliente', 'cliente_nombre', 'empresa', 'empresa_nombre',
             'responsable', 'responsable_nombre', 'centro_costo',
             'estado', 'estado_display', 'items', 'created_at'
         ]
         read_only_fields = ['cliente', 'estado']
+
+class CotizacionSerializer(serializers.ModelSerializer):
+    empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
+    trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
+    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
+
+    class Meta:
+        model = Cotizacion
+        fields = [
+            'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
+            'empresa', 'empresa_nombre', 'folio', 'obra', 'mandante', 'lugar_trabajo',
+            'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
+        ]
+        read_only_fields = ['empresa', 'created_at']
+
+class TareaAgendaSerializer(serializers.ModelSerializer):
+    asignado_a_nombre = serializers.CharField(source='asignado_a.username', read_only=True, default=None)
+    trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
+    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
+    trabajo_empresa_nombre = serializers.CharField(source='trabajo.cliente.empresa.nombre', read_only=True, default=None)
+
+    class Meta:
+        model = TareaAgenda
+        fields = [
+            'id', 'titulo', 'descripcion', 'fecha', 'hora',
+            'asignado_a', 'asignado_a_nombre',
+            'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo', 'trabajo_empresa_nombre',
+            'completada', 'created_at', 'updated_at',
+        ]
