@@ -4,7 +4,6 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
 })
 
-// Interceptor: agrega el token a cada petición automáticamente
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
@@ -12,5 +11,63 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+let isRefreshing = false
+let failedQueue = []
+
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) prom.reject(error)
+    else prom.resolve(token)
+  })
+  failedQueue = []
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Ya hay un refresh en curso: esta petición espera el resultado en vez de disparar otro
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return api(originalRequest)
+        })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        const refreshToken = localStorage.getItem('refresh_token')
+        if (!refreshToken) throw new Error('No hay refresh token')
+
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_URL}token/refresh/`,
+          { refresh: refreshToken }
+        )
+
+        localStorage.setItem('access_token', data.access)
+        processQueue(null, data.access)
+        originalRequest.headers.Authorization = `Bearer ${data.access}`
+        return api(originalRequest)
+      } catch (refreshError) {
+        processQueue(refreshError, null)
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        window.location.href = '/login'
+        return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
+      }
+    }
+
+    return Promise.reject(error)
+  }
+)
 
 export default api
