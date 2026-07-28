@@ -48,17 +48,14 @@ def _notificar_responsables(trabajo):
     bloquea el flujo del trabajo.
     """
     empresa = trabajo.cliente.empresa if trabajo.cliente else None
-    if not empresa:
-        return
 
     destinatarios = set()
 
-    if empresa.email:
-        destinatarios.add(empresa.email)
+    if trabajo.cliente and trabajo.cliente.email:
+        destinatarios.add(trabajo.cliente.email)
 
-    responsables_con_email = empresa.responsables.exclude(email__isnull=True).exclude(email='')
-    for r in responsables_con_email:
-        destinatarios.add(r.email)
+    if trabajo.responsable and trabajo.responsable.email:
+        destinatarios.add(trabajo.responsable.email)
 
     if not destinatarios:
         return
@@ -181,6 +178,220 @@ def _notificar_responsables(trabajo):
     except Exception:
         pass
 
+def _notificar_reserva_maquina(reserva):
+    """
+    Envía un correo al cliente que hizo la reserva y al responsable
+    indicado, confirmando la solicitud de arriendo y mostrando quién la pidió.
+    """
+    destinatarios = set()
+    if reserva.cliente.email:
+        destinatarios.add(reserva.cliente.email)
+    if reserva.responsable and reserva.responsable.email:
+        destinatarios.add(reserva.responsable.email)
+
+    if not destinatarios:
+        return
+
+    destinatarios = list(destinatarios)
+    nombre_responsable = reserva.responsable.nombre if reserva.responsable else 'Sin especificar'
+    if reserva.modalidad_entrega == 'DESPACHO':
+        modalidad_label = f'Despacho — {reserva.direccion_entrega}' if reserva.direccion_entrega else 'Despacho'
+    else:
+        modalidad_label = 'Retiro en local'
+    total = reserva.precio_total
+
+    fecha_inicio_fmt = reserva.fecha_inicio.strftime('%d/%m/%Y')
+    fecha_fin_fmt = reserva.fecha_fin.strftime('%d/%m/%Y')
+
+    texto_plano = (
+        f'Hola,\n\n'
+        f'Se registró tu solicitud de arriendo de {reserva.maquina.nombre}.\n\n'
+        f'Desde: {fecha_inicio_fmt}\n'
+        f'Hasta: {fecha_fin_fmt}\n'
+        f'Solicitado por: {nombre_responsable}\n'
+        f'Modalidad: {modalidad_label}\n'
+        + (f'Total IVA incluido: ${total:,.0f}'.replace(',', '.') + '\n\n' if total is not None else '\n')
+        + f'Queda pendiente de aprobación. Puedes revisar el estado en https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
+    fila_total_html = (
+        f'<tr><td style="{celda_borde} font-weight:bold;">Total IVA incluido</td>'
+        f'<td style="{celda_borde} font-weight:bold;">${total:,.0f}</td></tr>'.replace(',', '.')
+        if total is not None else ''
+    )
+
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:middle; padding-right:12px;">
+                        <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <span style="color:#ffffff; font-size:16px; font-weight:bold;">SOLICITUD DE ARRIENDO</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">
+                    Se registró la solicitud de arriendo de <strong>{reserva.maquina.nombre}</strong>.
+                  </p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
+                    <tr><td style="{celda_borde} font-weight:bold; width:40%;">Desde</td><td style="{celda_borde}">{fecha_inicio_fmt}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Hasta</td><td style="{celda_borde}">{fecha_fin_fmt}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Solicitado por</td><td style="{celda_borde}">{nombre_responsable}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Modalidad</td><td style="{celda_borde}">{modalidad_label}</td></tr>
+                    {fila_total_html}
+                  </table>
+                  <p style="margin:0; font-size:13px; color:#6b7280;">
+                    Queda pendiente de aprobación por parte de Ararat.
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0; font-size:12px; color:#9ca3af;">
+                    Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                    Este es un correo automático, no es necesario responderlo.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Solicitud de arriendo — {reserva.maquina.nombre}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.attach_alternative(html, 'text/html')
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+def _notificar_reserva_aprobada(reserva):
+    """
+    Envía un correo al cliente y al responsable cuando el admin aprueba
+    una reserva de máquina.
+    """
+    destinatarios = set()
+    if reserva.cliente.email:
+        destinatarios.add(reserva.cliente.email)
+    if reserva.responsable and reserva.responsable.email:
+        destinatarios.add(reserva.responsable.email)
+
+    if not destinatarios:
+        return
+
+    destinatarios = list(destinatarios)
+    nombre_responsable = reserva.responsable.nombre if reserva.responsable else 'Sin especificar'
+    fecha_inicio_fmt = reserva.fecha_inicio.strftime('%d/%m/%Y')
+    fecha_fin_fmt = reserva.fecha_fin.strftime('%d/%m/%Y')
+
+    if reserva.modalidad_entrega == 'DESPACHO':
+        modalidad_label = f'Despacho — {reserva.direccion_entrega}' if reserva.direccion_entrega else 'Despacho'
+    else:
+        modalidad_label = 'Retiro en local'
+
+    texto_plano = (
+        f'Hola,\n\n'
+        f'Tu solicitud de arriendo de {reserva.maquina.nombre} fue APROBADA.\n\n'
+        f'Desde: {fecha_inicio_fmt}\n'
+        f'Hasta: {fecha_fin_fmt}\n'
+        f'Solicitado por: {nombre_responsable}\n'
+        f'Modalidad: {modalidad_label}\n\n'
+        f'Revisa el detalle en https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
+
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:middle; padding-right:12px;">
+                        <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <span style="color:#ffffff; font-size:16px; font-weight:bold;">ARRIENDO APROBADO</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#22c55e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">
+                    Tu solicitud de arriendo de <strong>{reserva.maquina.nombre}</strong> fue <strong>aprobada</strong>.
+                  </p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
+                    <tr><td style="{celda_borde} font-weight:bold; width:40%;">Desde</td><td style="{celda_borde}">{fecha_inicio_fmt}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Hasta</td><td style="{celda_borde}">{fecha_fin_fmt}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Solicitado por</td><td style="{celda_borde}">{nombre_responsable}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Modalidad</td><td style="{celda_borde}">{modalidad_label}</td></tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0; font-size:12px; color:#9ca3af;">
+                    Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                    Este es un correo automático, no es necesario responderlo.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Arriendo aprobado — {reserva.maquina.nombre}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.attach_alternative(html, 'text/html')
+        email.send(fail_silently=True)
+    except Exception:
+        pass
 
 def _enviar_correo_pedido(pedido, destinatarios, asunto, mostrar_precio, reply_to):
     """
@@ -457,9 +668,8 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         if hasattr(trabajo, 'detalle_flexible'):
             trabajo.detalle_flexible.descontar_stock()
 
-        trabajo.estado = 'TERMINADO'
-        trabajo.avance = 100
         trabajo.save()
+        _notificar_responsables(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
@@ -651,6 +861,7 @@ class MaquinaViewSet(viewsets.ModelViewSet):
         maquina = self.get_object()
         fecha_inicio_str = request.query_params.get('fecha_inicio')
         fecha_fin_str = request.query_params.get('fecha_fin')
+        modalidad = request.query_params.get('modalidad', 'RETIRO')
 
         if not fecha_inicio_str or not fecha_fin_str:
             return Response({'error': 'Faltan fecha_inicio y fecha_fin'}, status=400)
@@ -664,8 +875,7 @@ class MaquinaViewSet(viewsets.ModelViewSet):
         if fecha_fin < fecha_inicio:
             return Response({'error': 'La fecha de término no puede ser anterior a la de inicio'}, status=400)
 
-        dias = (fecha_fin - fecha_inicio).days + 1
-        resultado = maquina.calcular_precio(dias)
+        resultado = maquina.calcular_precio(fecha_inicio, fecha_fin, con_despacho=(modalidad == 'DESPACHO'))
 
         if resultado is None:
             return Response(
@@ -693,9 +903,9 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
         fecha_inicio = serializer.validated_data['fecha_inicio']
         fecha_fin = serializer.validated_data['fecha_fin']
         maquina = serializer.validated_data['maquina']
+        modalidad = serializer.validated_data.get('modalidad_entrega', 'RETIRO')
 
-        dias = (fecha_fin - fecha_inicio).days + 1
-        cotizacion = maquina.calcular_precio(dias)
+        cotizacion = maquina.calcular_precio(fecha_inicio, fecha_fin, con_despacho=(modalidad == 'DESPACHO'))
 
         extra = {}
         if cotizacion:
@@ -703,11 +913,13 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
                 'dias': cotizacion['dias'],
                 'tarifa_aplicada': cotizacion['tarifa_aplicada'],
                 'precio_neto': cotizacion['precio_neto'],
+                'precio_despacho': cotizacion['precio_despacho'],
                 'iva': cotizacion['iva'],
                 'precio_total': cotizacion['precio_total'],
             }
 
-        serializer.save(cliente=self.request.user, estado='PENDIENTE', **extra)
+        reserva = serializer.save(cliente=self.request.user, estado='PENDIENTE', **extra)
+        _notificar_reserva_maquina(reserva)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
     def cambiar_estado(self, request, pk=None):
@@ -715,9 +927,24 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
         nuevo_estado = request.data.get('estado')
         if nuevo_estado not in ['APROBADA', 'RECHAZADA', 'PENDIENTE']:
             return Response({'error': 'Estado inválido'}, status=400)
+
+        estado_anterior = reserva.estado
         reserva.estado = nuevo_estado
         reserva.save()
+
+        if nuevo_estado == 'APROBADA' and estado_anterior != 'APROBADA':
+            _notificar_reserva_aprobada(reserva)
+
         return Response(ReservaMaquinaSerializer(reserva).data)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
+    def marcar_vistas(self, request):
+        """El cliente llama esto al entrar a la sección de arriendos, para
+        limpiar el contador de aprobaciones pendientes de revisar."""
+        ReservaMaquina.objects.filter(
+            cliente=request.user, estado='APROBADA', visto=False
+        ).update(visto=True)
+        return Response({'ok': True})
 
 
 class ProductoFerreteriaViewSet(viewsets.ModelViewSet):
@@ -950,6 +1177,30 @@ class ResumenPendientesView(APIView):
                 estado='PENDIENTE'
             ).count(),
         })
+
+class ResumenClienteView(APIView):
+    """
+    Cuenta de pendientes por revisar para el cliente logueado, usada para
+    las alertas numéricas en los banners de la pantalla de inicio:
+      - maestranza: trabajos TERMINADOS a los que aún no eligió retiro/despacho
+      - arriendos: reservas APROBADAS que todavía no ha visto
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.rol != 'CLIENTE':
+            return Response({'maestranza': 0, 'arriendos': 0})
+
+        maestranza = TrabajoMaestranza.objects.filter(
+            cliente=user, estado='TERMINADO', modalidad_entrega__isnull=True
+        ).count()
+
+        arriendos = ReservaMaquina.objects.filter(
+            cliente=user, estado='APROBADA', visto=False
+        ).count()
+
+        return Response({'maestranza': maestranza, 'arriendos': arriendos})
 
 class CotizacionViewSet(viewsets.ModelViewSet):
     serializer_class = CotizacionSerializer

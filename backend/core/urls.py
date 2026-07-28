@@ -4,7 +4,7 @@ from .views import (
     UsuarioViewSet, EmpresaViewSet, ResponsableViewSet, TrabajoMaestranzaViewSet,
     MaquinaViewSet, ReservaMaquinaViewSet, SolicitudMaterialViewSet,
     ProductoFerreteriaViewSet, PedidoFerreteriaViewSet, ProductoFlexibleViewSet, ProductoGasViewSet, PedidoGasViewSet,
-    ResumenPendientesView, CotizacionViewSet, TareaAgendaViewSet
+    ResumenPendientesView, ResumenClienteView, CotizacionViewSet, TareaAgendaViewSet
 )
 
 router = DefaultRouter()
@@ -25,4 +25,5 @@ router.register(r'tareas-agenda', TareaAgendaViewSet, basename='tarea-agenda')
 
 urlpatterns = router.urls + [
     path('resumen-pendientes/', ResumenPendientesView.as_view(), name='resumen-pendientes'),
+    path('resumen-cliente/', ResumenClienteView.as_view(), name='resumen-cliente'),
 ]

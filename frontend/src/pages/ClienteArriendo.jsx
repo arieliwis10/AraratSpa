@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getMaquinas, getReservas, crearReserva, cancelarReserva, cotizarMaquina } from '../api/arriendo'
+import { getMaquinas, getReservas, crearReserva, cancelarReserva, cotizarMaquina, marcarReservasVistas } from '../api/arriendo'
 import { getResponsables } from '../api/usuarios'
 import CalendarioDisponibilidad from '../components/CalendarioDisponibilidad'
 import CarritoGas from '../components/CarritoGas'
 import BadgeEstado from '../components/BadgeEstado'
 import fondoPanel from '../assets/fondo-panel.jpg'
+
 
 const ETIQUETA_TARIFA = {
   dia: 'Tarifa diaria',
@@ -25,6 +26,12 @@ function preciosDeMaquina(m) {
 
 function formatCLP(valor) {
   return `$${Number(valor).toLocaleString('es-CL')}`
+}
+
+function formatFechaCL(fechaStr) {
+  if (!fechaStr) return '—'
+  const [anio, mes, dia] = fechaStr.split('-')
+  return `${dia}/${mes}/${anio}`
 }
 
 function AvisoDespacho() {
@@ -48,6 +55,7 @@ export default function ClienteArriendo() {
   const [fechaFin, setFechaFin] = useState(null)
   const [modalidad, setModalidad] = useState('RETIRO')
   const [direccion, setDireccion] = useState('')
+  const [responsableId, setResponsableId] = useState('')
   const [cargando, setCargando] = useState(true)
   const [enviando, setEnviando] = useState(false)
 
@@ -58,6 +66,7 @@ export default function ClienteArriendo() {
   useEffect(() => {
     cargarDatos()
     getResponsables().then((res) => setResponsables(res.data))
+    marcarReservasVistas()
   }, [])
 
   useEffect(() => {
@@ -71,7 +80,7 @@ export default function ClienteArriendo() {
     setCargandoCotizacion(true)
     setErrorCotizacion('')
 
-    cotizarMaquina(maquinaActiva.id, fechaInicio, fechaFin || fechaInicio)
+    cotizarMaquina(maquinaActiva.id, fechaInicio, fechaFin || fechaInicio, modalidad)
       .then((res) => {
         if (!cancelado) setCotizacion(res.data)
       })
@@ -90,7 +99,7 @@ export default function ClienteArriendo() {
     return () => {
       cancelado = true
     }
-  }, [maquinaActiva, fechaInicio, fechaFin])
+  }, [maquinaActiva, fechaInicio, fechaFin, modalidad])
 
   async function cargarDatos() {
     setCargando(true)
@@ -109,6 +118,7 @@ export default function ClienteArriendo() {
     setFechaFin(null)
     setModalidad('RETIRO')
     setDireccion('')
+    setResponsableId('')
     setCotizacion(null)
     setErrorCotizacion('')
     setReservasDeEstaMaquina(misReservas.filter((r) => r.maquina === maquina.id))
@@ -126,6 +136,10 @@ export default function ClienteArriendo() {
   }
 
   async function handleReservar() {
+    if (!responsableId) {
+      alert('Selecciona quién de tu empresa encarga este arriendo')
+      return
+    }
     if (modalidad === 'DESPACHO' && !direccion.trim()) {
       alert('Ingresa la dirección de entrega')
       return
@@ -138,6 +152,7 @@ export default function ClienteArriendo() {
     try {
       await crearReserva({
         maquina: maquinaActiva.id,
+        responsable: responsableId,
         fecha_inicio: fechaInicio,
         fecha_fin: fechaFin || fechaInicio,
         modalidad_entrega: modalidad,
@@ -225,10 +240,10 @@ export default function ClienteArriendo() {
               <div>
                 <h3 className="font-bold text-dark mb-3">Tu reserva</h3>
                 <p className="text-sm text-gray-600 mb-1">
-                  Desde: <span className="font-medium text-dark">{fechaInicio || '—'}</span>
+                  Desde: <span className="font-medium text-dark">{fechaInicio ? formatFechaCL(fechaInicio) : '—'}</span>
                 </p>
                 <p className="text-sm text-gray-600">
-                  Hasta: <span className="font-medium text-dark">{fechaFin || fechaInicio || '—'}</span>
+                  Hasta: <span className="font-medium text-dark">{fechaFin || fechaInicio ? formatFechaCL(fechaFin || fechaInicio) : '—'}</span>
                 </p>
               </div>
 
@@ -247,12 +262,14 @@ export default function ClienteArriendo() {
                         <span>Neto</span>
                         <span>{formatCLP(cotizacion.precio_neto)}</span>
                       </div>
-                      <div className="flex justify-between text-sm text-gray-700">
-                        <span>IVA (19%)</span>
-                        <span>{formatCLP(cotizacion.iva)}</span>
-                      </div>
+                      {modalidad === 'DESPACHO' && Number(cotizacion.precio_despacho) > 0 && (
+                        <div className="flex justify-between text-sm text-gray-700">
+                          <span>Despacho</span>
+                          <span>{formatCLP(cotizacion.precio_despacho)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm font-bold text-dark border-t pt-1 mt-1">
-                        <span>Total</span>
+                        <span>Total IVA Incluido</span>
                         <span>{formatCLP(cotizacion.precio_total)}</span>
                       </div>
                       <div className="pt-1">
@@ -264,7 +281,21 @@ export default function ClienteArriendo() {
               )}
 
               <div>
-                <label className="block text-sm font-medium mb-1 text-dark">¿Retira o entrega en obra?</label>
+                <label className="block text-sm font-medium mb-1 text-dark">¿Quién de tu empresa encarga este arriendo?</label>
+                <select
+                  value={responsableId}
+                  onChange={(e) => setResponsableId(e.target.value)}
+                  className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Selecciona un responsable</option>
+                  {responsables.map((r) => (
+                    <option key={r.id} value={r.id}>{r.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1 text-dark">¿Retira o Despacho?</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -282,7 +313,7 @@ export default function ClienteArriendo() {
                       modalidad === 'DESPACHO' ? 'bg-primary text-white' : 'bg-gray-100 text-dark'
                     }`}
                   >
-                    Entrega en obra
+                    Despacho
                   </button>
                 </div>
               </div>
@@ -301,7 +332,7 @@ export default function ClienteArriendo() {
 
               <button
                 onClick={handleReservar}
-                disabled={!fechaInicio || !cotizacion || cargandoCotizacion || enviando}
+                disabled={!fechaInicio || !cotizacion || !responsableId || cargandoCotizacion || enviando}
                 className="w-full bg-primary text-white py-2 rounded hover:bg-primary-light font-medium disabled:opacity-50"
               >
                 {enviando ? 'Enviando...' : 'Solicitar reserva'}
@@ -398,10 +429,13 @@ export default function ClienteArriendo() {
                     <div key={r.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center flex-wrap gap-2">
                       <div>
                         <p className="font-medium text-dark">{r.maquina_nombre}</p>
-                        <p className="text-xs text-gray-500">{r.fecha_inicio} a {r.fecha_fin}</p>
+                        <p className="text-xs text-gray-500">{formatFechaCL(r.fecha_inicio)} a {formatFechaCL(r.fecha_fin)}</p>
                         <p className="text-xs text-gray-500">
-                          {r.modalidad_entrega === 'DESPACHO' ? `Entrega en obra: ${r.direccion_entrega}` : 'Retiro en local'}
+                          {r.modalidad_entrega === 'DESPACHO' ? `Despacho: ${r.direccion_entrega}` : 'Retiro en local'}
                         </p>
+                        {r.responsable_nombre && (
+                          <p className="text-xs text-gray-500">Encargado: {r.responsable_nombre}</p>
+                        )}
                         {r.precio_total && (
                           <p className="text-xs text-primary font-medium mt-0.5">
                             Total: {formatCLP(r.precio_total)}

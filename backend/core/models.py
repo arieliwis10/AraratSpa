@@ -1,6 +1,8 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from decimal import Decimal, ROUND_HALF_UP 
+from datetime import date
+from calendar import monthrange
+from decimal import Decimal, ROUND_HALF_UP
 
 
 class Empresa(models.Model):
@@ -53,7 +55,7 @@ class TrabajoMaestranza(models.Model):
 
     class Entrega(models.TextChoices):
         RETIRO = 'RETIRO', 'Retiro en local'
-        DELIVERY = 'DELIVERY', 'Delivery'
+        DESPACHO = 'DESPACHO', 'Despacho'
 
     cliente = models.ForeignKey(
         Usuario, on_delete=models.CASCADE, related_name='trabajos_maestranza',
@@ -171,6 +173,7 @@ class Maquina(models.Model):
     precio_dia = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     precio_semana = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     precio_mes = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_despacho = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     activo = models.BooleanField(default=True)
 
@@ -179,41 +182,93 @@ class Maquina(models.Model):
     def __str__(self):
         return self.nombre
 
-    def calcular_precio(self, dias):
+    @staticmethod
+    def _dias_facturables_mensual(fecha_inicio, fecha_fin):
         """
-        Calcula neto/IVA/total para una reserva de `dias` días, según la
-        tarifa correspondiente al tramo:
-          - 1 a 3 días: precio_dia * dias
-          - 4 a 17 días (2 semanas + 3 días): (precio_semana / 7) * dias
-          - 18+ días: (precio_mes / 30) * dias
+        Cuenta los días facturables tratando cada "mes" completo (mismo día
+        del mes que fecha_inicio, o el último día si el mes de destino es
+        más corto) como 30 días, más los días que sobren como resto.
+
+        Así una reserva de un mes calendario completo (ej. 21-08 a 21-09)
+        siempre cobra 30 días, sin importar si ese mes tuvo 28, 30 o 31
+        días reales.
+        """
+        meses = 0
+        cursor = fecha_inicio
+        anio, mes, dia = fecha_inicio.year, fecha_inicio.month, fecha_inicio.day
+
+        while True:
+            siguiente_mes = mes + 1
+            siguiente_anio = anio
+            if siguiente_mes > 12:
+                siguiente_mes = 1
+                siguiente_anio += 1
+            ultimo_dia_siguiente = monthrange(siguiente_anio, siguiente_mes)[1]
+            dia_ajustado = min(dia, ultimo_dia_siguiente)
+            candidato = date(siguiente_anio, siguiente_mes, dia_ajustado)
+
+            if candidato > fecha_fin:
+                break
+
+            meses += 1
+            cursor = candidato
+            anio, mes = siguiente_anio, siguiente_mes
+
+        dias_restantes = (fecha_fin - cursor).days
+        return meses * 30 + dias_restantes
+
+    def calcular_precio(self, fecha_inicio, fecha_fin, con_despacho=False):
+        """
+        Calcula neto/despacho/IVA/total para una reserva entre fecha_inicio
+        y fecha_fin (inclusive), según el tramo:
+          - 1 a 3 días reales: precio_dia * días
+          - 4 a 17 días reales: (precio_semana / 7) * días
+          - 18+ días reales: (precio_mes / 30) * días facturables, donde
+            los días facturables cuentan cada mes completo como 30 días
+            (ver _dias_facturables_mensual).
+
+        Si con_despacho=True y la máquina tiene precio_despacho configurado,
+        se suma al neto antes de calcular el IVA.
 
         Devuelve None si la máquina no tiene configurado el precio del
         tramo que corresponde a esa duración.
         """
-        if dias <= 3:
+        dias_reales = (fecha_fin - fecha_inicio).days + 1
+
+        if dias_reales <= 3:
             tarifa_aplicada = 'dia'
+            dias_facturables = dias_reales
             precio_base = self.precio_dia
-            neto = precio_base * dias if precio_base is not None else None
-        elif dias <= 17:
+            neto_arriendo = precio_base * dias_facturables if precio_base is not None else None
+        elif dias_reales <= 17:
             tarifa_aplicada = 'semana'
+            dias_facturables = dias_reales
             precio_base = self.precio_semana
-            neto = (precio_base / Decimal('7')) * dias if precio_base is not None else None
+            neto_arriendo = (precio_base / Decimal('7')) * dias_facturables if precio_base is not None else None
         else:
             tarifa_aplicada = 'mes'
+            dias_facturables = self._dias_facturables_mensual(fecha_inicio, fecha_fin)
             precio_base = self.precio_mes
-            neto = (precio_base / Decimal('30')) * dias if precio_base is not None else None
+            neto_arriendo = (precio_base / Decimal('30')) * dias_facturables if precio_base is not None else None
 
-        if neto is None:
+        if neto_arriendo is None:
             return None
 
-        neto = neto.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        neto_arriendo = neto_arriendo.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+        despacho = Decimal('0')
+        if con_despacho and self.precio_despacho:
+            despacho = self.precio_despacho
+
+        neto = neto_arriendo + despacho
         iva = (neto * self.IVA).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         total = neto + iva
 
         return {
-            'dias': dias,
+            'dias': dias_facturables,
             'tarifa_aplicada': tarifa_aplicada,
-            'precio_neto': neto,
+            'precio_neto': neto_arriendo,
+            'precio_despacho': despacho,
             'iva': iva,
             'precio_total': total,
         }
@@ -224,49 +279,37 @@ class ReservaMaquina(models.Model):
         PENDIENTE = 'PENDIENTE', 'Pendiente'
         APROBADA = 'APROBADA', 'Aprobada'
         RECHAZADA = 'RECHAZADA', 'Rechazada'
+        
 
     class Entrega(models.TextChoices):
         RETIRO = 'RETIRO', 'Retira en local'
-        DELIVERY = 'DELIVERY', 'Entrega en obra'
+        DESPACHO = 'DESPACHO', 'Entrega en obra'
 
     maquina = models.ForeignKey(Maquina, on_delete=models.CASCADE, related_name='reservas')
     cliente = models.ForeignKey(
         Usuario, on_delete=models.CASCADE, related_name='reservas',
         limit_choices_to={'rol': 'CLIENTE'}
     )
+    responsable = models.ForeignKey(
+        Responsable, on_delete=models.SET_NULL, null=True, blank=True, related_name='reservas_maquina'
+    )
     fecha_inicio = models.DateField()
     fecha_fin = models.DateField()
     modalidad_entrega = models.CharField(max_length=20, choices=Entrega.choices, default=Entrega.RETIRO)
     direccion_entrega = models.CharField(max_length=255, blank=True)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
+    visto = models.BooleanField(default=False)  # si el cliente ya revisó la aprobación
 
     # Precio calculado al momento de crear la reserva (queda "congelado"
     # aunque después cambien los precios de la máquina).
     dias = models.PositiveIntegerField(null=True, blank=True)
     tarifa_aplicada = models.CharField(max_length=10, blank=True)
     precio_neto = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    precio_despacho = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     iva = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     precio_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.maquina.nombre} - {self.cliente.username} ({self.fecha_inicio} a {self.fecha_fin})"
-
-    class Entrega(models.TextChoices):
-        RETIRO = 'RETIRO', 'Retira en local'
-        DELIVERY = 'DELIVERY', 'Entrega en obra'
-
-    maquina = models.ForeignKey(Maquina, on_delete=models.CASCADE, related_name='reservas')
-    cliente = models.ForeignKey(
-        Usuario, on_delete=models.CASCADE, related_name='reservas',
-        limit_choices_to={'rol': 'CLIENTE'}
-    )
-    fecha_inicio = models.DateField()
-    fecha_fin = models.DateField()
-    modalidad_entrega = models.CharField(max_length=20, choices=Entrega.choices, default=Entrega.RETIRO)
-    direccion_entrega = models.CharField(max_length=255, blank=True)
-    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

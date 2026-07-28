@@ -177,7 +177,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
 class MaquinaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Maquina
-        fields = ['id', 'nombre', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'activo']
+        fields = ['id', 'nombre', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'precio_despacho', 'activo']
 
 
 class ReservaMaquinaSerializer(serializers.ModelSerializer):
@@ -185,17 +185,29 @@ class ReservaMaquinaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
     empresa = serializers.IntegerField(source='cliente.empresa.id', read_only=True, default=None)
     empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
+    responsable_nombre = serializers.CharField(source='responsable.nombre', read_only=True, default=None)
 
     class Meta:
         model = ReservaMaquina
         fields = [
             'id', 'maquina', 'maquina_nombre', 'cliente', 'cliente_nombre',
             'empresa', 'empresa_nombre',
+            'responsable', 'responsable_nombre',
             'fecha_inicio', 'fecha_fin', 'modalidad_entrega', 'direccion_entrega',
-            'estado', 'dias', 'tarifa_aplicada', 'precio_neto', 'iva', 'precio_total',
+            'estado', 'visto', 'dias', 'tarifa_aplicada', 'precio_neto', 'precio_despacho', 'iva', 'precio_total',
             'created_at'
         ]
-        read_only_fields = ['cliente', 'estado', 'dias', 'tarifa_aplicada', 'precio_neto', 'iva', 'precio_total']
+        read_only_fields = [
+            'cliente', 'estado', 'visto', 'dias', 'tarifa_aplicada',
+            'precio_neto', 'precio_despacho', 'iva', 'precio_total'
+        ]
+
+    def validate(self, data):
+        if self.instance is None and not data.get('responsable'):
+            raise serializers.ValidationError({
+                'responsable': 'Debes indicar quién de tu empresa encarga este arriendo.'
+            })
+        return data
 
 class ProductoFerreteriaSerializer(serializers.ModelSerializer):
     categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
