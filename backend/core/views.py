@@ -6,6 +6,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import models
 from rest_framework.views import APIView
 from django.http import JsonResponse
+import base64
 
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
@@ -32,13 +33,15 @@ LOGO_URL = 'https://araratchile.com/wp-content/uploads/2023/02/Logos-16-1536x521
 
 # Ferretería Industrial (INSUMOS): destinatarios específicos.
 # El "reply_to" es la cuenta a la que le debe llegar si el destinatario responde el correo.
-FERRETERIA_INSUMOS_FROM_EMAIL = 'soldadurasararat@gmail.com'  # usado como reply_to
+FERRETERIA_INSUMOS_FROM_EMAIL = 'notificaciones@araratchile.com'  # usado como reply_to
 FERRETERIA_INSUMOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
 FERRETERIA_INSUMOS_VENDEDOR_EMAIL = 'ariel_18gol@hotmail.com'
 
+FACTURACION_EMAIL = 'facturacionapp@araratchile.com'
+
 # Repuestos industriales (REPUESTOS): destinatario (como estaba)
-REPUESTOS_FROM_EMAIL = 'soldadurasararat@gmail.com'  # usado como reply_to
-REPUESTOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
+REPUESTOS_FROM_EMAIL = 'notificaciones@araratchile.com'  # usado como reply_to
+REPUESTOS_JEFE_EMAIL = 'ventasrepuestos@araratchile.com'
 
 def health_check(request):
     return JsonResponse({"status": "ok"})
@@ -443,16 +446,16 @@ def _enviar_correo_pedido(pedido, destinatarios, asunto, mostrar_precio, reply_t
         filas_html = ''.join(
             f'<tr>'
             f'<td style="{celda_borde}">{item.nombre}</td>'
-            f'<td style="{celda_borde}">{item.sku or "-"}</td>'
             f'<td style="{celda_borde}">{item.cantidad}</td>'
+            f'<td style="{celda_borde}">{item.sku or "-"}</td>'
             f'<td style="{celda_borde}">${(item.precio or 0):,.0f}</td>'
             f'</tr>'.replace(',', '.')
             for item in items
         )
         encabezados_html = (
             f'<td style="{encabezado_borde}">Producto</td>'
-            f'<td style="{encabezado_borde}">SKU</td>'
             f'<td style="{encabezado_borde}">Cantidad</td>'
+            f'<td style="{encabezado_borde}">SKU</td>'
             f'<td style="{encabezado_borde}">Precio</td>'
         )
         fila_total_html = (
@@ -1544,8 +1547,124 @@ class CotizacionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         trabajo = serializer.validated_data.get('trabajo')
-        empresa = trabajo.cliente.empresa if trabajo and trabajo.cliente else None
+        empresa = serializer.validated_data.get('empresa')
+        # Si no se mandó empresa explícita (caso normal: cotización desde
+        # un trabajo), se deriva de la empresa del cliente del trabajo.
+        if not empresa and trabajo and trabajo.cliente:
+            empresa = trabajo.cliente.empresa
         serializer.save(empresa=empresa, creado_por=self.request.user)
+
+    @action(detail=True, methods=['post'], permission_classes=[EsAdmin])
+    def enviar_correo(self, request, pk=None):
+        cotizacion = self.get_object()
+
+        pdf_base64 = request.data.get('pdf_base64')
+        if not pdf_base64:
+            return Response({'error': 'Falta el PDF de la cotización'}, status=400)
+
+        # Prioridad: si tiene empresa registrada, usa su email. Si no,
+        # usa el email de contacto puntual (persona sin empresa).
+        empresa = cotizacion.empresa
+        if empresa and empresa.email:
+            email_destino = empresa.email
+        elif cotizacion.cliente_email:
+            email_destino = cotizacion.cliente_email
+        else:
+            return Response(
+                {'error': 'No hay un email de destino cargado para esta cotización.'},
+                status=400,
+            )
+
+        try:
+            if ',' in pdf_base64:
+                pdf_base64 = pdf_base64.split(',', 1)[1]
+            pdf_bytes = base64.b64decode(pdf_base64)
+        except Exception:
+            return Response({'error': 'El PDF recibido no es válido'}, status=400)
+
+        destinatarios = [email_destino, FACTURACION_EMAIL]
+        nombre_destino = empresa.nombre if empresa else cotizacion.mandante
+        total_fmt = f'${cotizacion.total:,.0f}'.replace(',', '.')
+
+        texto_plano = (
+            f'Hola,\n\n'
+            f'Te compartimos la cotización folio {cotizacion.folio}'
+            + (f' para la obra "{cotizacion.obra}"' if cotizacion.obra else '') + '.\n\n'
+            f'Total: {total_fmt} (IVA incluido)\n\n'
+            f'Encuentras el detalle completo en el PDF adjunto.\n\n'
+            f'Ararat Estructuras Metálicas'
+        )
+
+        celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
+        html = f'''
+        <html>
+        <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                  <tr>
+                    <td style="background-color:#0f0f0f; padding:18px 24px;">
+                      <table role="presentation" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="vertical-align:middle; padding-right:12px;">
+                            <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <span style="color:#ffffff; font-size:16px; font-weight:bold;">COTIZACIÓN {cotizacion.folio}</span>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:24px;">
+                      <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">
+                        Te compartimos la cotización solicitada{f' para la obra <strong>{cotizacion.obra}</strong>' if cotizacion.obra else ''}.
+                      </p>
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
+                        <tr><td style="{celda_borde} font-weight:bold; width:40%;">Empresa</td><td style="{celda_borde}">{nombre_empresa}</td></tr>
+                        <tr><td style="{celda_borde} font-weight:bold;">Folio</td><td style="{celda_borde}">{cotizacion.folio}</td></tr>
+                        <tr><td style="{celda_borde} font-weight:bold;">Total (IVA incluido)</td><td style="{celda_borde} font-weight:bold;">{total_fmt}</td></tr>
+                      </table>
+                      <p style="margin:0; font-size:13px; color:#6b7280;">
+                        El detalle completo va en el PDF adjunto a este correo.
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                      <p style="margin:0; font-size:12px; color:#9ca3af;">
+                        Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                        Este es un correo automático, no es necesario responderlo.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        '''
+
+        try:
+            email = EmailMultiAlternatives(
+                subject=f'Cotización {cotizacion.folio} — Ararat',
+                body=texto_plano,
+                from_email=None,
+                to=destinatarios,
+            )
+            email.attach_alternative(html, 'text/html')
+            email.attach(f'cotizacion_{cotizacion.folio}.pdf', pdf_bytes, 'application/pdf')
+            email.send(fail_silently=False)
+        except Exception as e:
+            return Response({'error': f'No se pudo enviar el correo: {e}'}, status=500)
+
+        return Response({'ok': True})
 
 class TareaAgendaViewSet(viewsets.ModelViewSet):
     serializer_class = TareaAgendaSerializer

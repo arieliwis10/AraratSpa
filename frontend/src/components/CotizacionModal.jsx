@@ -1,52 +1,67 @@
 import { useState } from 'react'
 import { generarCotizacionPDF } from '../utils/generarCotizacionPDF'
-import { crearCotizacion } from '../api/cotizaciones'
+import { crearCotizacion, actualizarCotizacion } from '../api/cotizaciones'
 
-function claveMesActual() {
-  const fecha = new Date()
-  const yyyy = fecha.getFullYear()
-  const mm = String(fecha.getMonth() + 1).padStart(2, '0')
-  return `${yyyy}${mm}`
-}
+export default function CotizacionModal({ trabajo = null, cotizacionExistente = null, empresas = [], onCerrar }) {
+  const esEdicion = !!cotizacionExistente
+  // "vinculado a un trabajo" puede venir de dos lados: se abrió desde un
+  // trabajo real (prop `trabajo`), o se está editando una cotización que
+  // ya tenía un trabajo asociado (cotizacionExistente.trabajo).
+  const tieneTrabajoVinculado = esEdicion ? !!cotizacionExistente.trabajo : !!trabajo
+  const esPlantilla = !tieneTrabajoVinculado
 
-function leerContadorCotizaciones(clave) {
-  const raw = localStorage.getItem(`cotizacion_correlativo_${clave}`)
-  return raw ? parseInt(raw, 10) : 0
-}
+  const [modoCliente, setModoCliente] = useState(
+    esEdicion && cotizacionExistente.cliente_email ? 'persona' : 'empresa'
+  )
+  const [empresaId, setEmpresaId] = useState(esEdicion ? (cotizacionExistente.empresa || '') : '')
+  const [clienteEmail, setClienteEmail] = useState(esEdicion ? (cotizacionExistente.cliente_email || '') : '')
+  const [ordenTrabajoManual, setOrdenTrabajoManual] = useState(
+    esEdicion ? (cotizacionExistente.orden_trabajo_manual || '') : ''
+  )
 
-function guardarContadorCotizaciones(clave, valor) {
-  localStorage.setItem(`cotizacion_correlativo_${clave}`, String(valor))
-}
-
-// Reserva y devuelve el siguiente número de folio del mes actual.
-// Si cambia el mes, la clave cambia y el contador vuelve a partir de 1.
-function siguienteFolio() {
-  const clave = claveMesActual()
-  const actual = leerContadorCotizaciones(clave)
-  const nuevo = actual + 1
-  guardarContadorCotizaciones(clave, nuevo)
-  return `${clave}_${nuevo}`
-}
-
-export default function CotizacionModal({ trabajo, onCerrar }) {
-  const [obra, setObra] = useState(trabajo.descripcion || '')
+  const [obra, setObra] = useState(
+    esEdicion ? (cotizacionExistente.obra || '') : (trabajo?.descripcion || '')
+  )
   const [mandante, setMandante] = useState(
-    trabajo.empresa_nombre || trabajo.cliente_nombre || ''
+    esEdicion ? (cotizacionExistente.mandante || '') : (trabajo?.empresa_nombre || trabajo?.cliente_nombre || '')
   )
-  const [lugarTrabajo, setLugarTrabajo] = useState('')
-  const [validezDias, setValidezDias] = useState('10')
+  const [lugarTrabajo, setLugarTrabajo] = useState(esEdicion ? (cotizacionExistente.lugar_trabajo || '') : '')
+  const [validezDias, setValidezDias] = useState(
+    esEdicion ? String(cotizacionExistente.validez_dias) : '10'
+  )
   const [items, setItems] = useState(
-    (trabajo.materiales || []).map((m) => ({
-      detalle: `${m.nombre} — ${m.cantidad}`,
-      cantidad: '1',
-      precioUnitario: '',
-    }))
+    esEdicion
+      ? cotizacionExistente.items
+      : (trabajo?.materiales || []).map((m) => ({
+          detalle: `${m.nombre} — ${m.cantidad}`,
+          cantidad: '1',
+          precioUnitario: '',
+        }))
   )
-  const [notas, setNotas] = useState('')
-  const [folioAsignado, setFolioAsignado] = useState(null)
+  const [notas, setNotas] = useState(esEdicion ? (cotizacionExistente.notas || '') : '')
+  const [folioAsignado, setFolioAsignado] = useState(esEdicion ? cotizacionExistente.folio : null)
   const [guardando, setGuardando] = useState(false)
 
-  const fechaFormateada = new Date().toLocaleDateString('es-CL')
+  const esPersonaSinEmpresa = esPlantilla && modoCliente === 'persona'
+  const fechaFormateada = esEdicion
+    ? new Date(cotizacionExistente.created_at).toLocaleDateString('es-CL')
+    : new Date().toLocaleDateString('es-CL')
+
+  function seleccionarEmpresa(id) {
+    setEmpresaId(id)
+    const empresa = empresas.find((e) => String(e.id) === String(id))
+    if (empresa) setMandante(empresa.nombre)
+  }
+
+  function cambiarModoCliente(modo) {
+    setModoCliente(modo)
+    if (modo === 'empresa') {
+      setClienteEmail('')
+    } else {
+      setEmpresaId('')
+      setMandante('')
+    }
+  }
 
   function actualizarItem(index, campo, valor) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [campo]: valor } : it)))
@@ -77,46 +92,64 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
     return `$${Math.round(valor).toLocaleString('es-CL')}`
   }
 
+  function calcularTrabajoLabel() {
+    if (tieneTrabajoVinculado) {
+      return esEdicion
+        ? `${cotizacionExistente.trabajo_categoria_display} #${cotizacionExistente.trabajo_correlativo}`
+        : `#${trabajo.correlativo} ${trabajo.categoria_display}`
+    }
+    return ordenTrabajoManual.trim() || '-'
+  }
+
   async function generarPDF() {
-    // El folio se asigna recién al generar (no al abrir el modal), para no
-    // "quemar" números si el admin abre y cierra sin llegar a generar el PDF.
-    const folio = folioAsignado || siguienteFolio()
-    if (!folioAsignado) setFolioAsignado(folio)
+    if (esPlantilla && modoCliente === 'empresa' && !empresaId) {
+      alert('Selecciona la empresa para esta cotización.')
+      return
+    }
+    if (esPersonaSinEmpresa && (!mandante.trim() || !clienteEmail.trim())) {
+      alert('Ingresa el nombre y el email del cliente.')
+      return
+    }
 
     const { subtotal, iva, total } = calcularTotales()
+    const trabajoLabel = calcularTrabajoLabel()
 
-    generarCotizacionPDF({
-      folio,
-      fechaFormateada,
-      trabajoLabel: `#${trabajo.correlativo} ${trabajo.categoria_display}`,
+    const payload = {
+      trabajo: esEdicion ? (cotizacionExistente.trabajo || null) : (trabajo?.id || null),
+      empresa: esPlantilla && modoCliente === 'empresa' ? empresaId : null,
+      cliente_email: esPersonaSinEmpresa ? clienteEmail.trim() : null,
+      orden_trabajo_manual: esPlantilla ? ordenTrabajoManual.trim() : '',
       obra,
       mandante,
-      lugarTrabajo,
+      lugar_trabajo: lugarTrabajo,
+      validez_dias: validezDias,
       items,
       notas,
-      validezDias,
-    })
+      subtotal,
+      iva,
+      total,
+    }
 
     setGuardando(true)
     try {
-      await crearCotizacion({
-        trabajo: trabajo.id,
-        folio,
-        obra,
-        mandante,
-        lugar_trabajo: lugarTrabajo,
-        validez_dias: validezDias,
-        items,
-        notas,
-        subtotal,
-        iva,
-        total,
+      let folio = folioAsignado
+      if (esEdicion) {
+        await actualizarCotizacion(cotizacionExistente.id, payload)
+      } else {
+        // El folio ya NO se genera en el navegador: lo asigna el backend
+        // (así se evita el problema de folios repetidos entre pestañas
+        // o máquinas distintas).
+        const res = await crearCotizacion(payload)
+        folio = res.data.folio
+        setFolioAsignado(folio)
+      }
+
+      generarCotizacionPDF({
+        folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo, items, notas, validezDias,
       })
     } catch (err) {
-      // El PDF ya se descargó igual; si falla el guardado, no bloqueamos al
-      // admin, pero esta cotización no va a aparecer después en la pestaña
-      // "Cotizaciones".
-      console.error('No se pudo guardar la cotización para consultarla después', err)
+      console.error('No se pudo guardar la cotización', err)
+      alert('No se pudo guardar la cotización. Intenta de nuevo.')
     } finally {
       setGuardando(false)
     }
@@ -127,7 +160,11 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
       <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto p-5">
         <div className="flex justify-between items-center mb-1">
           <h2 className="text-lg font-bold text-dark">
-            Cotización — {trabajo.categoria_display} #{trabajo.correlativo}
+            {esEdicion
+              ? `Editar cotización — Folio ${cotizacionExistente.folio}`
+              : trabajo
+                ? `Cotización — ${trabajo.categoria_display} #${trabajo.correlativo}`
+                : 'Nueva cotización'}
           </h2>
           <button onClick={onCerrar} className="text-gray-400 hover:text-dark text-xl leading-none">✕</button>
         </div>
@@ -136,6 +173,75 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
             ? `N° Cotización: ${folioAsignado}`
             : 'El N° de cotización se asigna al generar el PDF'}
         </p>
+
+        {esPlantilla && (
+          <div className="mb-3">
+            <div className="flex gap-1 bg-gray-100 rounded p-1 w-fit mb-3">
+              <button
+                type="button"
+                onClick={() => cambiarModoCliente('empresa')}
+                className={`px-3 py-1 rounded text-xs font-medium ${modoCliente === 'empresa' ? 'bg-white shadow text-dark' : 'text-gray-500'}`}
+              >
+                Empresa registrada
+              </button>
+              <button
+                type="button"
+                onClick={() => cambiarModoCliente('persona')}
+                className={`px-3 py-1 rounded text-xs font-medium ${modoCliente === 'persona' ? 'bg-white shadow text-dark' : 'text-gray-500'}`}
+              >
+                Cliente sin empresa
+              </button>
+            </div>
+
+            {modoCliente === 'empresa' ? (
+              <div className="mb-3">
+                <label className="block text-xs font-medium mb-1 text-dark">Empresa</label>
+                <select
+                  value={empresaId}
+                  onChange={(e) => seleccionarEmpresa(e.target.value)}
+                  className="w-full border rounded p-2 text-sm"
+                >
+                  <option value="">Selecciona una empresa</option>
+                  {empresas.map((e) => (
+                    <option key={e.id} value={e.id}>{e.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-dark">Nombre del cliente</label>
+                  <input
+                    value={mandante}
+                    onChange={(e) => setMandante(e.target.value)}
+                    placeholder="Ej: Juan Pérez"
+                    className="w-full border rounded p-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-dark">Email del cliente</label>
+                  <input
+                    type="email"
+                    value={clienteEmail}
+                    onChange={(e) => setClienteEmail(e.target.value)}
+                    placeholder="cliente@correo.com"
+                    className="w-full border rounded p-2 text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium mb-1 text-dark">Orden de trabajo (opcional)</label>
+              <input
+                value={ordenTrabajoManual}
+                onChange={(e) => setOrdenTrabajoManual(e.target.value)}
+                placeholder='Ej: "Reparación bomba hidráulica" o un N° de orden externo'
+                className="w-full border rounded p-2 text-sm"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
@@ -146,14 +252,18 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
               className="w-full border rounded p-2 text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 text-dark">Mandante</label>
-            <input
-              value={mandante}
-              onChange={(e) => setMandante(e.target.value)}
-              className="w-full border rounded p-2 text-sm"
-            />
-          </div>
+
+          {!esPersonaSinEmpresa && (
+            <div>
+              <label className="block text-xs font-medium mb-1 text-dark">Mandante</label>
+              <input
+                value={mandante}
+                onChange={(e) => setMandante(e.target.value)}
+                className="w-full border rounded p-2 text-sm"
+              />
+            </div>
+          )}
+
           <div className="col-span-2">
             <label className="block text-xs font-medium mb-1 text-dark">Lugar de trabajo (opcional)</label>
             <input
@@ -229,7 +339,7 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
             disabled={guardando}
             className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-60"
           >
-            {guardando ? 'Guardando...' : 'Generar PDF'}
+            {guardando ? 'Guardando...' : esEdicion ? 'Guardar cambios y generar PDF' : 'Generar PDF'}
           </button>
         </div>
       </div>

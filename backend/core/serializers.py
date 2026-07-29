@@ -283,10 +283,13 @@ class CotizacionSerializer(serializers.ModelSerializer):
         model = Cotizacion
         fields = [
             'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
-            'empresa', 'empresa_nombre', 'empresa_email', 'folio', 'obra', 'mandante', 'lugar_trabajo',
+            'empresa', 'empresa_nombre', 'empresa_email', 'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
         ]
-        read_only_fields = ['empresa', 'created_at']
+        # 'empresa' y 'trabajo' ahora son escribibles (antes 'empresa' estaba
+        # forzado a solo-lectura), para poder crear cotizaciones "sueltas"
+        # eligiendo la empresa directamente, sin depender de un trabajo.
+        read_only_fields = ['created_at']
 
 class TareaAgendaSerializer(serializers.ModelSerializer):
     asignado_a_nombre = serializers.CharField(source='asignado_a.username', read_only=True, default=None)
@@ -302,3 +305,19 @@ class TareaAgendaSerializer(serializers.ModelSerializer):
             'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo', 'trabajo_empresa_nombre',
             'completada', 'created_at', 'updated_at',
         ]
+
+class CotizacionSerializer(serializers.ModelSerializer):
+    empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
+    empresa_email = serializers.CharField(source='empresa.email', read_only=True, default=None)
+    trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
+    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
+
+    class Meta:
+        model = Cotizacion
+        fields = [
+            'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
+            'empresa', 'empresa_nombre', 'empresa_email', 'cliente_email',
+            'folio', 'obra', 'mandante', 'lugar_trabajo',
+            'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
+        ]
+        read_only_fields = ['created_at']

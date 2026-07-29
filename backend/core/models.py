@@ -3,6 +3,7 @@ from django.db import models
 from datetime import date
 from calendar import monthrange
 from decimal import Decimal, ROUND_HALF_UP
+from django.utils import timezone
 
 
 class Empresa(models.Model):
@@ -647,3 +648,60 @@ class TareaAgenda(models.Model):
 
     def __str__(self):
         return f"{self.titulo} ({self.fecha})"
+
+class Cotizacion(models.Model):
+    trabajo = models.ForeignKey(
+        TrabajoMaestranza, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones'
+    )
+    empresa = models.ForeignKey(
+        Empresa, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones'
+    )
+    # Solo se usa cuando la cotización es para alguien que NO tiene empresa
+    # registrada en el sistema (persona natural, cliente puntual, etc).
+    # Si 'empresa' está seteada, el envío usa empresa.email y este campo
+    # queda vacío/sin uso.
+    cliente_email = models.EmailField(blank=True, null=True)
+        # Solo se usa cuando la cotización es una plantilla (sin trabajo
+    # asociado) y el admin escribe manualmente a qué corresponde
+    # ("Orden de trabajo" en el PDF).
+    orden_trabajo_manual = models.CharField(max_length=255, blank=True)
+    creado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones_creadas'
+    )
+
+    # Antes venía generado en el frontend con localStorage — se cambió a
+    # blank=True porque ahora se asigna automáticamente en save() si no
+    # viene seteado, evitando folios repetidos entre pestañas/máquinas.
+    folio = models.CharField(max_length=20, blank=True)
+    obra = models.CharField(max_length=255, blank=True)
+    mandante = models.CharField(max_length=255, blank=True)
+    lugar_trabajo = models.CharField(max_length=255, blank=True)
+    validez_dias = models.PositiveIntegerField(default=10)
+    items = models.JSONField(default=list)
+    notas = models.TextField(blank=True)
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    iva = models.DecimalField(max_digits=12, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.folio:
+            prefijo = timezone.now().strftime('%Y%m')
+            ultimo = Cotizacion.objects.filter(folio__startswith=f'{prefijo}_').order_by('-id').first()
+            ultimo_num = 0
+            if ultimo:
+                try:
+                    ultimo_num = int(ultimo.folio.rsplit('_', 1)[1])
+                except (IndexError, ValueError):
+                    ultimo_num = 0
+            self.folio = f'{prefijo}_{ultimo_num + 1}'
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Cotización {self.folio} — {self.empresa or self.mandante}"

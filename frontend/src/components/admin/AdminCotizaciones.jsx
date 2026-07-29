@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { getCotizaciones } from '../../api/cotizaciones'
+import { getCotizaciones, enviarCorreoCotizacion } from '../../api/cotizaciones'
 import { getEmpresas } from '../../api/usuarios'
 import { getReservas, getPedidosGas } from '../../api/arriendo'
 import { getPedidosFerreteria } from '../../api/ferreteria'
-import { generarCotizacionPDF } from '../../utils/generarCotizacionPDF'
+import { generarCotizacionPDF, generarCotizacionPDFBase64 } from '../../utils/generarCotizacionPDF'
+import CotizacionModal from '../CotizacionModal'
 
 const MESES = [
   { valor: '01', label: 'Enero' },
@@ -102,9 +103,10 @@ function FiltrosComunes({
   )
 }
 
-function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio }) {
+function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, onEditar }) {
   const [cotizaciones, setCotizaciones] = useState([])
   const [cargando, setCargando] = useState(true)
+  const [enviandoId, setEnviandoId] = useState(null)
 
   useEffect(() => {
     getCotizaciones().then((res) => {
@@ -119,7 +121,7 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
       fechaFormateada: new Date(c.created_at).toLocaleDateString('es-CL'),
       trabajoLabel: c.trabajo_categoria_display && c.trabajo_correlativo
         ? `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
-        : '-',
+        : (c.orden_trabajo_manual || '-'),
       obra: c.obra,
       mandante: c.mandante,
       lugarTrabajo: c.lugar_trabajo,
@@ -140,14 +142,36 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
     )
   }
 
-  function handleEnviarCorreo(c) {
-    if (!c.empresa_email) {
-      alert('Esta empresa no tiene un email cargado. Agrégalo en la pestaña Usuarios/Empresas.')
+  async function handleEnviarCorreo(c) {
+    const emailDestino = c.empresa_email || c.cliente_email
+    if (!emailDestino) {
+      alert('Esta cotización no tiene un email de destino. Edítala o agrégalo en Usuarios/Empresas.')
       return
     }
-    const asunto = `Cotización ${c.folio} — Ararat`
-    const cuerpo = mensajeCotizacion(c)
-    window.location.href = `mailto:${c.empresa_email}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+
+    setEnviandoId(c.id)
+    try {
+      const pdfBase64 = await generarCotizacionPDFBase64({
+        folio: c.folio,
+        fechaFormateada: new Date(c.created_at).toLocaleDateString('es-CL'),
+        trabajoLabel: c.trabajo_categoria_display && c.trabajo_correlativo
+          ? `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
+          : (c.orden_trabajo_manual || '-'),
+        obra: c.obra,
+        mandante: c.mandante,
+        lugarTrabajo: c.lugar_trabajo,
+        items: c.items,
+        notas: c.notas,
+        validezDias: c.validez_dias,
+      })
+      await enviarCorreoCotizacion(c.id, pdfBase64)
+      alert(`Cotización enviada a ${emailDestino} y a facturacionapp@araratchile.com.`)
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'No se pudo enviar el correo. Intenta de nuevo.'
+      alert(msg)
+    } finally {
+      setEnviandoId(null)
+    }
   }
 
   function handleCompartirWhatsapp(c) {
@@ -178,6 +202,12 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
               ${Number(c.total).toLocaleString('es-CL')}
             </span>
             <button
+              onClick={() => onEditar(c)}
+              className="bg-gray-600 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-700 w-full sm:w-48 text-center"
+            >
+              ✏️ Editar
+            </button>
+            <button
               onClick={() => handleDescargar(c)}
               className="bg-primary text-white px-3 py-1.5 rounded text-sm hover:bg-primary-light w-full sm:w-48 text-center"
             >
@@ -185,9 +215,10 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
             </button>
             <button
               onClick={() => handleEnviarCorreo(c)}
-              className="bg-dark text-white px-3 py-1.5 rounded text-sm hover:bg-dark-soft w-full sm:w-48 text-center"
+              disabled={enviandoId === c.id}
+              className="bg-dark text-white px-3 py-1.5 rounded text-sm hover:bg-dark-soft w-full sm:w-48 text-center disabled:opacity-60"
             >
-              ✉️ Enviar correo
+              {enviandoId === c.id ? 'Enviando...' : '✉️ Enviar correo'}
             </button>
             <button
               onClick={() => handleCompartirWhatsapp(c)}
@@ -300,10 +331,18 @@ export default function AdminCotizaciones() {
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroMes, setFiltroMes] = useState('')
   const [filtroAnio, setFiltroAnio] = useState('')
+  // null = cerrado | 'nueva' = plantilla en blanco | objeto cotización = editando
+  const [modalCotizacion, setModalCotizacion] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     getEmpresas().then((res) => setEmpresas(res.data))
   }, [])
+
+  function handleCerrarModal() {
+    setModalCotizacion(null)
+    setRefreshKey((k) => k + 1) // fuerza re-fetch de la lista de cotizaciones
+  }
 
   const TIPOS = [
     { id: 'maestranza', label: 'Maestranza' },
@@ -314,16 +353,27 @@ export default function AdminCotizaciones() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex gap-1 bg-white rounded-lg shadow p-1 w-fit flex-wrap">
-        {TIPOS.map((t) => (
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <div className="flex gap-1 bg-white rounded-lg shadow p-1 w-fit flex-wrap">
+          {TIPOS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTipo(t.id)}
+              className={`px-4 py-1.5 rounded text-sm font-medium ${tipo === t.id ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tipo === 'maestranza' && (
           <button
-            key={t.id}
-            onClick={() => setTipo(t.id)}
-            className={`px-4 py-1.5 rounded text-sm font-medium ${tipo === t.id ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+            onClick={() => setModalCotizacion('nueva')}
+            className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light"
           >
-            {t.label}
+            + Nueva cotización
           </button>
-        ))}
+        )}
       </div>
 
       <FiltrosComunes
@@ -336,10 +386,26 @@ export default function AdminCotizaciones() {
         setFiltroAnio={setFiltroAnio}
       />
 
-      {tipo === 'maestranza' && <SeccionCotizacionesMaestranza filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
+      {tipo === 'maestranza' && (
+        <SeccionCotizacionesMaestranza
+          key={refreshKey}
+          filtroEmpresa={filtroEmpresa}
+          filtroMes={filtroMes}
+          filtroAnio={filtroAnio}
+          onEditar={(c) => setModalCotizacion(c)}
+        />
+      )}
       {tipo === 'maquinas' && <SeccionMaquinas filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
       {tipo === 'ferreteria' && <SeccionPedidos tipo="ferreteria" filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
       {tipo === 'gas' && <SeccionPedidos tipo="gas" filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
+
+      {modalCotizacion && (
+        <CotizacionModal
+          empresas={empresas}
+          cotizacionExistente={modalCotizacion === 'nueva' ? null : modalCotizacion}
+          onCerrar={handleCerrarModal}
+        />
+      )}
     </div>
   )
 }

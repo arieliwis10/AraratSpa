@@ -18,9 +18,6 @@ export function calcularTotalesCotizacion(items) {
   return { subtotal, iva, total }
 }
 
-// Descarga /logos/ararat.png (mismo origen, sirve desde /public) y lo
-// convierte a base64 para poder dibujarlo dentro del PDF con jsPDF.
-// Se cachea en memoria para no volver a descargarlo en cada cotización.
 let logoBase64Cache = null
 async function cargarLogoBase64() {
   if (logoBase64Cache) return logoBase64Cache
@@ -39,10 +36,9 @@ async function cargarLogoBase64() {
   }
 }
 
-// Genera y descarga el PDF de una cotización. Sirve tanto para generar una
-// nueva (desde CotizacionModal) como para volver a descargar una ya
-// guardada (desde AdminCotizaciones), siempre que se le pasen los mismos datos.
-export async function generarCotizacionPDF({
+// Construye el documento jsPDF, sin descargarlo ni devolver bytes todavía.
+// Uso interno de generarCotizacionPDF y generarCotizacionPDFBase64.
+async function construirDocCotizacion({
   folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo,
   items, notas, validezDias,
 }) {
@@ -57,7 +53,6 @@ export async function generarCotizacionPDF({
   doc.rect(0, 28, pageWidth, 2, 'F')
 
   if (logoBase64) {
-    // Aspect ratio real del logo (1279x719) para no deformarlo.
     const anchoLogo = 32
     const altoLogo = anchoLogo * (719 / 1279)
     doc.addImage(
@@ -167,5 +162,18 @@ export async function generarCotizacionPDF({
     doc.text(`Nota: ${notas}`, 10, y)
   }
 
-  doc.save(`cotizacion_${folio}.pdf`)
+  return doc
+}
+
+// Genera y descarga el PDF (comportamiento de siempre).
+export async function generarCotizacionPDF(datos) {
+  const doc = await construirDocCotizacion(datos)
+  doc.save(`cotizacion_${datos.folio}.pdf`)
+}
+
+// Genera el PDF y lo devuelve como data URI base64, sin descargarlo.
+// Pensado para mandarlo al backend y que lo adjunte a un correo.
+export async function generarCotizacionPDFBase64(datos) {
+  const doc = await construirDocCotizacion(datos)
+  return doc.output('datauristring')
 }
