@@ -7,7 +7,7 @@ import fondoPanel from '../assets/fondo-panel.jpg'
 function Badge({ cantidad }) {
   if (!cantidad) return null
   return (
-    <span className="absolute -top-2 -right-2 bg-danger text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md">
+    <span className="absolute -top-2 -right-2 bg-danger text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md animate-pulse">
       {cantidad > 9 ? '9+' : cantidad}
     </span>
   )
@@ -26,8 +26,11 @@ export default function ClienteHome() {
 
   return (
     <div className="min-h-screen bg-gray-100 w-full">
-      <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
-        <h1 className="text-xl md:text-2xl font-bold">Bienvenido</h1>
+      <header className="relative w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
+        <h1 className="absolute left-1/2 -translate-x-1/2 text-xl md:text-2xl font-bold whitespace-nowrap">
+          Bienvenido
+        </h1>
+        <div />
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-300 hidden sm:inline">Hola, {usuario.username}</span>
           <button

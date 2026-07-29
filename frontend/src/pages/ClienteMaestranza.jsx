@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario } from '../api/maestranza'
+import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario, actualizarFoto } from '../api/maestranza'
 import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
@@ -115,6 +115,7 @@ export default function ClienteMaestranza() {
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
   const [mesFiltro, setMesFiltro] = useState(mesActualISO())
   const [expandido, setExpandido] = useState({})
+  const [subiendoFoto, setSubiendoFoto] = useState(null)
 
   useEffect(() => {
     cargarTrabajos()
@@ -138,6 +139,21 @@ export default function ClienteMaestranza() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al crear el trabajo')
+    }
+  }
+
+  async function handleSubirFoto(trabajoId, file) {
+    if (!file) return
+    setSubiendoFoto(trabajoId)
+    try {
+      const formData = new FormData()
+      formData.append('foto', file)
+      await actualizarFoto(trabajoId, formData)
+      cargarTrabajos()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al subir la foto')
+    } finally {
+      setSubiendoFoto(null)
     }
   }
 
@@ -215,13 +231,17 @@ export default function ClienteMaestranza() {
 
   return (
     <div className="min-h-screen bg-gray-100 w-full">
-      <header className="w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/cliente')} className="text-gray-300 hover:text-white">
-            ←
-          </button>
-          <h1 className="text-xl md:text-2xl font-bold">Maestranza</h1>
-        </div>
+      <header className="relative w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
+        <button
+          onClick={() => navigate('/cliente')}
+          aria-label="Volver"
+          className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 hover:bg-white/20 text-white text-3xl leading-none transition shrink-0"
+        >
+          ←
+        </button>
+        <h1 className="absolute left-1/2 -translate-x-1/2 text-xl md:text-2xl font-bold whitespace-nowrap">
+          Maestranza
+        </h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-300 hidden sm:inline">Hola, {usuario.username}</span>
           <button
@@ -406,8 +426,19 @@ export default function ClienteMaestranza() {
                 <div className="flex flex-col gap-3">
                   {trabajosActivos.map((t) => {
                     const estaExpandido = Boolean(expandido[t.id])
+                    const listoParaRetiro = t.estado === 'TERMINADO' && !t.modalidad_entrega
                     return (
-                      <div key={t.id} className="bg-white rounded-lg shadow p-4">
+                      <div
+                        key={t.id}
+                        className={`relative bg-white rounded-lg shadow p-4 ${
+                          listoParaRetiro ? 'border-2 border-primary' : ''
+                        }`}
+                      >
+                        {listoParaRetiro && (
+                          <span className="absolute -top-2 -right-2 bg-danger text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
+                            !
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => toggleExpandido(t.id)}
@@ -446,6 +477,25 @@ export default function ClienteMaestranza() {
                                 alt="evidencia"
                                 className="mb-3 w-20 h-20 object-cover rounded border"
                               />
+                            )}
+
+                            {t.estado === 'PENDIENTE' && (
+                              <div className="mb-3 border rounded p-2 bg-gray-50">
+                                <label className="block text-xs font-bold text-dark mb-1">
+                                  {t.foto ? 'Cambiar foto' : '📷 Agregar foto (opcional)'}
+                                </label>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  onChange={(e) => handleSubirFoto(t.id, e.target.files[0])}
+                                  disabled={subiendoFoto === t.id}
+                                  className="w-full text-xs"
+                                />
+                                {subiendoFoto === t.id && (
+                                  <p className="text-xs text-gray-400 mt-1">Subiendo...</p>
+                                )}
+                              </div>
                             )}
 
                             {t.materiales?.length > 0 && (

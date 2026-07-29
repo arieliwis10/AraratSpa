@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   getTrabajos, actualizarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
-  getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario
+  getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos
 } from '../../api/maestranza'
 import { getUsuarios, getEmpresas } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
@@ -84,7 +84,18 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   }
 
   function toggleExpandido(id) {
+    const abriendo = !expandido[id]
     setExpandido((prev) => ({ ...prev, [id]: !prev[id] }))
+
+    if (abriendo) {
+      const trabajo = trabajos.find((t) => t.id === id)
+      const tieneComentariosSinVer = trabajo?.comentarios?.some((c) => !c.visto_admin)
+      if (tieneComentariosSinVer) {
+        marcarComentariosVistos(id)
+          .then(() => onActualizarPendientes?.())
+          .catch(() => {})
+      }
+    }
   }
 
   async function handleAsignarDesdeBanner(trabajoId) {
@@ -558,12 +569,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           value={editando.estado}
                           onChange={(e) => setEditando({ ...editando, estado: e.target.value })}
                           className="w-full border rounded p-2 text-sm"
-                          disabled={editando.estado === 'TERMINADO'}
                         >
                           <option value="PENDIENTE">Pendiente</option>
                           <option value="EN_PROGRESO">En progreso</option>
-                          <option value="TERMINADO">Terminado</option>
                         </select>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Para marcarlo como Terminado, sube el avance a 100% y usa el botón de abajo.
+                        </p>
                       </div>
                       <div>
                         <label className="block text-xs font-medium mb-1 text-dark">Avance (%)</label>

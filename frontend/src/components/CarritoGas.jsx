@@ -72,9 +72,7 @@ export default function CarritoGas({ responsables, onEnviado, onCancelar }) {
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
         <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium">Pedido de Gas</h2>
-        <button onClick={onCancelar} className="text-primary text-sm font-medium hover:underline">
-          ← Volver
-        </button>
+        
       </div>
 
       <p className="text-xs text-gray-400 italic -mt-2">
@@ -85,7 +83,7 @@ export default function CarritoGas({ responsables, onEnviado, onCancelar }) {
         <p className="text-dark">Cargando catálogo...</p>
       ) : productos.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          Todavía no hay productos de gas cargados.
+          No hay productos de gas cargados.
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

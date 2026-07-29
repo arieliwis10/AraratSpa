@@ -9,6 +9,7 @@ export default function CarritoFerreteria({ categoria, categoriaLabel, responsab
   const [responsableId, setResponsableId] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
+  const [productoDetalle, setProductoDetalle] = useState(null)
 
   useEffect(() => {
     setCargando(true)
@@ -81,7 +82,10 @@ export default function CarritoFerreteria({ categoria, categoriaLabel, responsab
         <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium">
           {categoriaLabel}
         </h2>
-        <button onClick={onCancelar} className="text-primary text-sm font-medium hover:underline">
+        <button
+          onClick={onCancelar}
+          className="bg-white rounded-lg shadow px-3 py-1.5 text-primary text-sm font-medium hover:bg-gray-50"
+        >
           ← Volver a categorías
         </button>
       </div>
@@ -98,47 +102,55 @@ export default function CarritoFerreteria({ categoria, categoriaLabel, responsab
             const cantidad = carrito[p.id] || 0
             return (
               <div key={p.id} className="bg-white rounded-lg shadow overflow-hidden flex flex-col">
-                <div className="h-24 bg-gray-50 flex items-center justify-center">
-                  {p.imagen ? (
-                    <img src={p.imagen} alt={p.nombre} className="w-full h-full object-contain" />
-                  ) : (
-                    <span className="text-gray-300 text-xs">Sin imagen</span>
-                  )}
-                </div>
-                <div className="p-2 flex flex-col gap-1 flex-1">
-                  <p className="text-sm font-bold text-dark leading-tight">{p.nombre}</p>
-                  {p.descripcion && <p className="text-xs text-gray-500">{p.descripcion}</p>}
-                  {p.precio && (
-                    <p className="text-sm font-bold text-primary">
-                      ${Number(p.precio).toLocaleString('es-CL')}
-                    </p>
-                  )}
-                  <div className="mt-auto pt-2">
-                    {cantidad === 0 ? (
-                      <button
-                        onClick={() => cambiarCantidad(p.id, 1)}
-                        className="w-full bg-primary text-white text-xs font-medium py-1.5 rounded hover:bg-primary-light"
-                      >
-                        🛒 Agregar
-                      </button>
+                <button
+                  type="button"
+                  onClick={() => setProductoDetalle(p)}
+                  className="text-left"
+                >
+                  <div className="h-24 bg-gray-50 flex items-center justify-center">
+                    {p.imagen ? (
+                      <img src={p.imagen} alt={p.nombre} className="w-full h-full object-contain" />
                     ) : (
-                      <div className="flex items-center justify-between bg-primary/10 rounded">
-                        <button
-                          onClick={() => cambiarCantidad(p.id, -1)}
-                          className="px-2.5 py-1 text-primary font-bold"
-                        >
-                          −
-                        </button>
-                        <span className="text-sm font-bold text-dark">{cantidad}</span>
-                        <button
-                          onClick={() => cambiarCantidad(p.id, 1)}
-                          className="px-2.5 py-1 text-primary font-bold"
-                        >
-                          +
-                        </button>
-                      </div>
+                      <span className="text-gray-300 text-xs">Sin imagen</span>
                     )}
                   </div>
+                  <div className="px-2 pt-2 flex flex-col gap-1">
+                    <p className="text-sm font-bold text-dark leading-tight line-clamp-2">{p.nombre}</p>
+                    {p.descripcion && (
+                      <p className="text-xs text-gray-500 line-clamp-2">{p.descripcion}</p>
+                    )}
+                    {p.precio && (
+                      <p className="text-sm font-bold text-primary">
+                        ${Number(p.precio).toLocaleString('es-CL')}
+                      </p>
+                    )}
+                  </div>
+                </button>
+                <div className="p-2 pt-1 mt-auto">
+                  {cantidad === 0 ? (
+                    <button
+                      onClick={() => cambiarCantidad(p.id, 1)}
+                      className="w-full bg-primary text-white text-xs font-medium py-1.5 rounded hover:bg-primary-light"
+                    >
+                      🛒 Agregar
+                    </button>
+                  ) : (
+                    <div className="flex items-center justify-between bg-primary/10 rounded">
+                      <button
+                        onClick={() => cambiarCantidad(p.id, -1)}
+                        className="px-2.5 py-1 text-primary font-bold"
+                      >
+                        −
+                      </button>
+                      <span className="text-sm font-bold text-dark">{cantidad}</span>
+                      <button
+                        onClick={() => cambiarCantidad(p.id, 1)}
+                        className="px-2.5 py-1 text-primary font-bold"
+                      >
+                        +
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -198,6 +210,74 @@ export default function CarritoFerreteria({ categoria, categoriaLabel, responsab
           >
             {enviando ? 'Enviando...' : 'Enviar solicitud'}
           </button>
+        </div>
+      )}
+
+      {productoDetalle && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={() => setProductoDetalle(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-lg w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="h-56 bg-gray-50 flex items-center justify-center shrink-0">
+              {productoDetalle.imagen ? (
+                <img
+                  src={productoDetalle.imagen}
+                  alt={productoDetalle.nombre}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <span className="text-gray-300 text-sm">Sin imagen</span>
+              )}
+            </div>
+            <div className="p-4 flex flex-col gap-2 overflow-y-auto">
+              <p className="text-base font-bold text-dark">{productoDetalle.nombre}</p>
+              {productoDetalle.descripcion && (
+                <p className="text-sm text-gray-600 whitespace-pre-line">{productoDetalle.descripcion}</p>
+              )}
+              {productoDetalle.precio && (
+                <p className="text-lg font-bold text-primary">
+                  ${Number(productoDetalle.precio).toLocaleString('es-CL')}
+                </p>
+              )}
+
+              <div className="flex items-center gap-3 mt-2">
+                {(carrito[productoDetalle.id] || 0) === 0 ? (
+                  <button
+                    onClick={() => cambiarCantidad(productoDetalle.id, 1)}
+                    className="flex-1 bg-primary text-white text-sm font-medium py-2 rounded hover:bg-primary-light"
+                  >
+                    🛒 Agregar
+                  </button>
+                ) : (
+                  <div className="flex-1 flex items-center justify-between bg-primary/10 rounded">
+                    <button
+                      onClick={() => cambiarCantidad(productoDetalle.id, -1)}
+                      className="px-4 py-2 text-primary font-bold"
+                    >
+                      −
+                    </button>
+                    <span className="text-sm font-bold text-dark">{carrito[productoDetalle.id]}</span>
+                    <button
+                      onClick={() => cambiarCantidad(productoDetalle.id, 1)}
+                      className="px-4 py-2 text-primary font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => setProductoDetalle(null)}
+                  className="bg-dark/10 text-dark px-4 py-2 rounded text-sm hover:bg-dark/20"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

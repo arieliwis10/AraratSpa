@@ -68,7 +68,7 @@ class ComentarioTrabajoSerializer(serializers.ModelSerializer):
         model = ComentarioTrabajo
         fields = [
             'id', 'trabajo', 'autor', 'autor_nombre', 'autor_rol',
-            'responsable', 'responsable_nombre', 'mensaje', 'created_at'
+            'responsable', 'responsable_nombre', 'mensaje', 'created_at', 'visto_admin'
         ]
         read_only_fields = ['trabajo', 'autor']
 
@@ -275,6 +275,7 @@ class PedidoGasSerializer(serializers.ModelSerializer):
 
 class CotizacionSerializer(serializers.ModelSerializer):
     empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
+    empresa_email = serializers.CharField(source='empresa.email', read_only=True, default=None)
     trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
     trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
 
@@ -282,7 +283,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
         model = Cotizacion
         fields = [
             'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
-            'empresa', 'empresa_nombre', 'folio', 'obra', 'mandante', 'lugar_trabajo',
+            'empresa', 'empresa_nombre', 'empresa_email', 'folio', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
         ]
         read_only_fields = ['empresa', 'created_at']

@@ -601,6 +601,289 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+def _notificar_nuevo_trabajo(trabajo):
+    """
+    Envía un correo a todos los admins con email cargado cuando un cliente
+    crea un trabajo de Maestranza de cualquier categoría, para que se
+    enteren de la solicitud sin tener que estar mirando el panel.
+    """
+    destinatarios = list(
+        Usuario.objects.filter(rol='ADMIN').exclude(email='').values_list('email', flat=True)
+    )
+    if not destinatarios:
+        return
+
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    nombre_empresa = empresa.nombre if empresa else (trabajo.cliente.username if trabajo.cliente else '-')
+    nombre_responsable = trabajo.responsable.nombre if trabajo.responsable else 'Sin especificar'
+    categoria_label = trabajo.get_categoria_display()
+
+    texto_plano = (
+        f'Nueva solicitud de {categoria_label}.\n\n'
+        f'Empresa: {nombre_empresa}\n'
+        f'Solicitado por: {nombre_responsable}\n'
+        f'Centro de costo: {trabajo.centro_costo}\n\n'
+        f'Descripción:\n{trabajo.descripcion}\n\n'
+        f'Revísalo en https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:middle; padding-right:12px;">
+                        <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <span style="color:#ffffff; font-size:16px; font-weight:bold;">NUEVA SOLICITUD — {categoria_label.upper()}</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
+                    <tr><td style="{celda_borde} font-weight:bold; width:40%;">Empresa</td><td style="{celda_borde}">{nombre_empresa}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Solicitado por</td><td style="{celda_borde}">{nombre_responsable}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Centro de costo</td><td style="{celda_borde}">{trabajo.centro_costo}</td></tr>
+                  </table>
+                  <p style="margin:0; font-size:14px; color:#111827; white-space:pre-line;">{trabajo.descripcion}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0; font-size:12px; color:#9ca3af;">
+                    Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                    Este es un correo automático, no es necesario responderlo.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Nueva solicitud de {categoria_label} — {nombre_empresa}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.attach_alternative(html, 'text/html')
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+
+def _notificar_trabajo_aprobado(trabajo):
+    """
+    Envía un correo al cliente y al responsable del trabajo cuando el admin
+    lo aprueba, avisando que el trabajo quedó en proceso.
+    """
+    destinatarios = set()
+    if trabajo.cliente and trabajo.cliente.email:
+        destinatarios.add(trabajo.cliente.email)
+    if trabajo.responsable and trabajo.responsable.email:
+        destinatarios.add(trabajo.responsable.email)
+    if not destinatarios:
+        return
+    destinatarios = list(destinatarios)
+
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    nombre_empresa = empresa.nombre if empresa else 'tu empresa'
+    categoria_label = trabajo.get_categoria_display()
+
+    texto_plano = (
+        f'Hola,\n\n'
+        f'Tu solicitud de {categoria_label} (#{trabajo.correlativo}) fue aprobada '
+        f'y ya está en proceso.\n\n'
+        f'Descripción: {trabajo.descripcion}\n\n'
+        f'Puedes revisar el avance en https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
+    html = f'''
+    <html>
+    <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Arial, Helvetica, sans-serif;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+              <tr>
+                <td style="background-color:#0f0f0f; padding:18px 24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align:middle; padding-right:12px;">
+                        <img src="{LOGO_URL}" alt="Ararat" height="48" style="display:block; height:48px; width:auto;">
+                      </td>
+                      <td style="vertical-align:middle;">
+                        <span style="color:#ffffff; font-size:16px; font-weight:bold;">TRABAJO EN PROCESO</span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#be1e1e; height:4px; font-size:0; line-height:0;">&nbsp;</td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <p style="margin:0 0 16px 0; font-size:15px; color:#111827;">
+                    Se aprobó tu solicitud de <strong>{categoria_label}</strong> y ya está en proceso.
+                  </p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
+                    <tr><td style="{celda_borde} font-weight:bold; width:40%;">Empresa</td><td style="{celda_borde}">{nombre_empresa}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Trabajo</td><td style="{celda_borde}">#{trabajo.correlativo}</td></tr>
+                  </table>
+                  <p style="margin:0; font-size:14px; color:#111827;">{trabajo.descripcion}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#f9fafb; padding:16px 24px; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0; font-size:12px; color:#9ca3af;">
+                    Ararat Estructuras Metálicas SPA &middot; La Rinconada de Huelquén Sitio 4 Lote B, Paine<br>
+                    Este es un correo automático, no es necesario responderlo.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    '''
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Trabajo #{trabajo.correlativo} en proceso — Ararat',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.attach_alternative(html, 'text/html')
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+
+def _notificar_comentario_admin(trabajo, comentario):
+    """
+    Correo a los admins cuando el CLIENTE agrega un comentario a un trabajo
+    (no se notifica cuando el que comenta es el propio admin).
+    """
+    destinatarios = list(
+        Usuario.objects.filter(rol='ADMIN').exclude(email='').values_list('email', flat=True)
+    )
+    if not destinatarios:
+        return
+
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    nombre_empresa = empresa.nombre if empresa else '-'
+    autor = comentario.responsable.nombre if comentario.responsable else trabajo.cliente.username
+
+    texto_plano = (
+        f'{autor} ({nombre_empresa}) comentó en el trabajo #{trabajo.correlativo} '
+        f'({trabajo.get_categoria_display()}):\n\n'
+        f'"{comentario.mensaje}"\n\n'
+        f'Revísalo en https://app.araratchile.com\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Nuevo comentario — Trabajo #{trabajo.correlativo}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+
+def _notificar_completado_admin(trabajo):
+    """Correo a los admins cuando un trabajo se marca como Terminado."""
+    destinatarios = list(
+        Usuario.objects.filter(rol='ADMIN').exclude(email='').values_list('email', flat=True)
+    )
+    if not destinatarios:
+        return
+
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    nombre_empresa = empresa.nombre if empresa else '-'
+
+    texto_plano = (
+        f'El trabajo #{trabajo.correlativo} ({trabajo.get_categoria_display()}) de '
+        f'{nombre_empresa} se marcó como Terminado. Ya se notificó al cliente para '
+        f'que elija retiro o despacho.\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Trabajo #{trabajo.correlativo} completado — {nombre_empresa}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+
+def _notificar_modalidad_admin(trabajo):
+    """Correo a los admins cuando el cliente elige retiro/despacho."""
+    destinatarios = list(
+        Usuario.objects.filter(rol='ADMIN').exclude(email='').values_list('email', flat=True)
+    )
+    if not destinatarios:
+        return
+
+    empresa = trabajo.cliente.empresa if trabajo.cliente else None
+    nombre_empresa = empresa.nombre if empresa else '-'
+    modalidad_label = (
+        f'Despacho — {trabajo.direccion_entrega}' if trabajo.modalidad_entrega == 'DELIVERY'
+        else 'Retiro en local'
+    )
+
+    texto_plano = (
+        f'{nombre_empresa} eligió cómo recibir el trabajo #{trabajo.correlativo} '
+        f'({trabajo.get_categoria_display()}):\n\n'
+        f'{modalidad_label}\n\n'
+        f'Ararat Estructuras Metálicas'
+    )
+
+    try:
+        email = EmailMultiAlternatives(
+            subject=f'Modalidad de entrega elegida — Trabajo #{trabajo.correlativo}',
+            body=texto_plano,
+            from_email=None,
+            to=destinatarios,
+        )
+        email.send(fail_silently=True)
+    except Exception:
+        pass
+
+
 class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
     serializer_class = TrabajoMaestranzaSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -624,7 +907,14 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
-        serializer.save(cliente=self.request.user)
+        trabajo = serializer.save(cliente=self.request.user)
+        _notificar_nuevo_trabajo(trabajo)
+
+    def perform_update(self, serializer):
+        estaba_aprobado = serializer.instance.aprobado
+        trabajo = serializer.save()
+        if trabajo.aprobado and not estaba_aprobado:
+            _notificar_trabajo_aprobado(trabajo)
 
     def _puede_operar(self, request, trabajo):
         return request.user.rol == 'ADMIN' or trabajo.asignado_a_id == request.user.id
@@ -633,6 +923,24 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
     def aprobar(self, request, pk=None):
         trabajo = self.get_object()
         trabajo.aprobado = True
+        trabajo.save()
+        _notificar_trabajo_aprobado(trabajo)
+        return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def actualizar_foto(self, request, pk=None):
+        trabajo = self.get_object()
+        if trabajo.cliente != request.user:
+            return Response({'error': 'No autorizado'}, status=403)
+        if trabajo.estado != 'PENDIENTE':
+            return Response(
+                {'error': 'Solo puedes agregar o cambiar la foto mientras el trabajo está pendiente'},
+                status=400,
+            )
+        foto = request.FILES.get('foto')
+        if not foto:
+            return Response({'error': 'Falta la foto'}, status=400)
+        trabajo.foto = foto
         trabajo.save()
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
@@ -645,7 +953,16 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         if 'estado' in request.data:
             trabajo.estado = request.data['estado']
         if 'avance' in request.data:
-            trabajo.avance = request.data['avance']
+            avance = request.data['avance']
+            if avance in (None, ''):
+                avance = 0
+            try:
+                avance = int(avance)
+            except (TypeError, ValueError):
+                return Response({'error': 'El avance debe ser un número entre 0 y 100.'}, status=400)
+            if not (0 <= avance <= 100):
+                return Response({'error': 'El avance debe estar entre 0 y 100.'}, status=400)
+            trabajo.avance = avance
         if 'tiempo_entrega' in request.data:
             trabajo.tiempo_entrega = request.data['tiempo_entrega'] or None
 
@@ -673,6 +990,7 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
         trabajo.save()
         _notificar_responsables(trabajo)
+        _notificar_completado_admin(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
@@ -693,6 +1011,7 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         trabajo.modalidad_entrega = modalidad
         trabajo.direccion_entrega = direccion if modalidad == 'DELIVERY' else ''
         trabajo.save()
+        _notificar_modalidad_admin(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
@@ -766,10 +1085,19 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
             except Responsable.DoesNotExist:
                 return Response({'error': 'Responsable inválido'}, status=400)
 
-        ComentarioTrabajo.objects.create(
-            trabajo=trabajo, autor=user, responsable=responsable_obj, mensaje=mensaje
+        comentario = ComentarioTrabajo.objects.create(
+            trabajo=trabajo, autor=user, responsable=responsable_obj, mensaje=mensaje,
+            visto_admin=(user.rol != 'CLIENTE'),
         )
+        if user.rol == 'CLIENTE':
+            _notificar_comentario_admin(trabajo, comentario)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def marcar_comentarios_vistos(self, request, pk=None):
+        trabajo = self.get_object()
+        trabajo.comentarios.filter(visto_admin=False).update(visto_admin=True)
+        return Response({'ok': True})
 
 
 class SolicitudMaterialViewSet(viewsets.ModelViewSet):
@@ -1165,8 +1493,10 @@ class ResumenPendientesView(APIView):
 
         solicitudes_por_revisar = SolicitudMaterial.objects.filter(estado='REVISION').count()
 
+        comentarios_sin_ver = ComentarioTrabajo.objects.filter(visto_admin=False).count()
+
         return Response({
-            'maestranza': maestranza_por_aprobar_o_asignar + solicitudes_por_revisar,
+            'maestranza': maestranza_por_aprobar_o_asignar + solicitudes_por_revisar + comentarios_sin_ver,
             'ferreteria': PedidoFerreteria.objects.filter(
                 estado=PedidoFerreteria.Estado.PENDIENTE
             ).count(),

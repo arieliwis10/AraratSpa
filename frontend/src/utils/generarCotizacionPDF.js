@@ -18,14 +18,36 @@ export function calcularTotalesCotizacion(items) {
   return { subtotal, iva, total }
 }
 
+// Descarga /logos/ararat.png (mismo origen, sirve desde /public) y lo
+// convierte a base64 para poder dibujarlo dentro del PDF con jsPDF.
+// Se cachea en memoria para no volver a descargarlo en cada cotización.
+let logoBase64Cache = null
+async function cargarLogoBase64() {
+  if (logoBase64Cache) return logoBase64Cache
+  try {
+    const res = await fetch('/Logoararat.png')
+    const blob = await res.blob()
+    logoBase64Cache = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+    return logoBase64Cache
+  } catch (err) {
+    return null
+  }
+}
+
 // Genera y descarga el PDF de una cotización. Sirve tanto para generar una
 // nueva (desde CotizacionModal) como para volver a descargar una ya
 // guardada (desde AdminCotizaciones), siempre que se le pasen los mismos datos.
-export function generarCotizacionPDF({
+export async function generarCotizacionPDF({
   folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo,
   items, notas, validezDias,
 }) {
   const { subtotal, iva, total } = calcularTotalesCotizacion(items)
+  const logoBase64 = await cargarLogoBase64()
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
 
@@ -34,10 +56,17 @@ export function generarCotizacionPDF({
   doc.setFillColor(190, 30, 30)
   doc.rect(0, 28, pageWidth, 2, 'F')
 
-  doc.setFillColor(255, 255, 255)
-  doc.rect(8, 4, 32, 20, 'F')
-  doc.setDrawColor(180, 180, 180)
-  doc.rect(8, 4, 32, 20)
+  if (logoBase64) {
+    // Aspect ratio real del logo (1279x719) para no deformarlo.
+    const anchoLogo = 32
+    const altoLogo = anchoLogo * (719 / 1279)
+    doc.addImage(
+      logoBase64, 'PNG',
+      8,
+      4 + (20 - altoLogo) / 2,
+      anchoLogo, altoLogo
+    )
+  }
 
   const textoX = 46
   doc.setTextColor(255, 255, 255)

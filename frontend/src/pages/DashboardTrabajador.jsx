@@ -610,12 +610,13 @@ export default function DashboardTrabajador() {
                                       value={editando.estado}
                                       onChange={(e) => setEditando({ ...editando, estado: e.target.value })}
                                       className="w-full border rounded p-2 text-sm"
-                                      disabled={editando.estado === 'TERMINADO'}
                                     >
                                       <option value="PENDIENTE">Pendiente</option>
                                       <option value="EN_PROGRESO">En progreso</option>
-                                      <option value="TERMINADO">Terminado</option>
                                     </select>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                      Para marcarlo como Terminado, sube el avance a 100% y usa el botón de abajo.
+                                    </p>
                                   </div>
                                   <div>
                                     <label className="block text-xs font-medium mb-1 text-dark">Avance (%)</label>

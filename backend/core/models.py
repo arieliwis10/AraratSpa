@@ -47,6 +47,7 @@ class TrabajoMaestranza(models.Model):
         INSUMOS = 'INSUMOS', 'Insumos ferretería'
         REPUESTOS = 'REPUESTOS', 'Repuestos industriales'
         FLEXIBLES = 'FLEXIBLES', 'Flexibles hidráulicos'
+        FABRICACION = 'FABRICACION', 'Fabricación de equipos especiales y proyecto'
 
     class Estado(models.TextChoices):
         PENDIENTE = 'PENDIENTE', 'Pendiente'
@@ -127,6 +128,10 @@ class ComentarioTrabajo(models.Model):
     )
     mensaje = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+    # True si el admin ya revisó este comentario. Los comentarios que escribe
+    # el propio admin se guardan como ya vistos (no tiene sentido alertarse a
+    # sí mismo); solo los del cliente arrancan en False.
+    visto_admin = models.BooleanField(default=True)
 
     class Meta:
         ordering = ['created_at']

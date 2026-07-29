@@ -88,7 +88,7 @@ export default function CotizacionModal({ trabajo, onCerrar }) {
     generarCotizacionPDF({
       folio,
       fechaFormateada,
-      trabajoLabel: `${trabajo.categoria_display} #${trabajo.correlativo}`,
+      trabajoLabel: `#${trabajo.correlativo} ${trabajo.categoria_display}`,
       obra,
       mandante,
       lugarTrabajo,

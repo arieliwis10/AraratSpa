@@ -305,7 +305,7 @@ function PedidosMaquinas({ onPendientesChange }) {
       ) : (
         <div className="flex flex-col gap-3">
           {reservas.length === 0 && (
-            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay reservas todavía.</div>
+            <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay reservas.</div>
           )}
           {reservas.map((r) => (
             <div key={r.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center flex-wrap gap-3">
@@ -521,7 +521,7 @@ function SeccionProductosGas({ onStockBajoChange }) {
         <p className="text-dark">Cargando...</p>
       ) : productos.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-          No hay productos de gas todavía.
+          No hay productos de gas.
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -588,7 +588,7 @@ function SeccionPedidosGas({ onPendientesChange }) {
   if (cargando) return <p className="text-dark">Cargando...</p>
 
   if (pedidos.length === 0) {
-    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay pedidos de gas todavía.</div>
+    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay pedidos de gas.</div>
   }
 
   return (

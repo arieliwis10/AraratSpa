@@ -129,6 +129,32 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
     })
   }
 
+  function mensajeCotizacion(c) {
+    const nombre = c.empresa_nombre || c.mandante || 'estimado(a)'
+    const total = Number(c.total).toLocaleString('es-CL')
+    return (
+      `Hola ${nombre}, te compartimos la cotización folio ${c.folio}` +
+      (c.obra ? ` para la obra "${c.obra}"` : '') +
+      ` por un total de $${total} (IVA incluido). ` +
+      `Descarga el PDF desde el botón "Descargar PDF" y adjúntalo aquí. ¡Gracias!`
+    )
+  }
+
+  function handleEnviarCorreo(c) {
+    if (!c.empresa_email) {
+      alert('Esta empresa no tiene un email cargado. Agrégalo en la pestaña Usuarios/Empresas.')
+      return
+    }
+    const asunto = `Cotización ${c.folio} — Ararat`
+    const cuerpo = mensajeCotizacion(c)
+    window.location.href = `mailto:${c.empresa_email}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`
+  }
+
+  function handleCompartirWhatsapp(c) {
+    const texto = mensajeCotizacion(c)
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
   const filtradas = cotizaciones.filter((c) => pasaFiltro(c.created_at, c.empresa, filtroEmpresa, filtroAnio, filtroMes))
 
   if (cargando) return <p className="text-dark">Cargando...</p>
@@ -140,22 +166,34 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio })
   return (
     <div className="flex flex-col gap-3">
       {filtradas.map((c) => (
-        <div key={c.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-center flex-wrap gap-3">
+        <div key={c.id} className="bg-white rounded-lg shadow p-4 flex justify-between items-start flex-wrap gap-3">
           <div>
             <p className="text-xs font-bold text-primary uppercase">Folio {c.folio}</p>
             <p className="text-sm font-bold text-dark mt-0.5">{c.empresa_nombre || c.mandante || '-'}</p>
             {c.obra && <p className="text-xs text-gray-500 mt-0.5">{c.obra}</p>}
             <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(c.created_at)}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
             <span className="text-primary font-medium text-sm">
               ${Number(c.total).toLocaleString('es-CL')}
             </span>
             <button
               onClick={() => handleDescargar(c)}
-              className="bg-primary text-white px-3 py-1.5 rounded text-sm hover:bg-primary-light"
+              className="bg-primary text-white px-3 py-1.5 rounded text-sm hover:bg-primary-light w-full sm:w-48 text-center"
             >
               Descargar PDF
+            </button>
+            <button
+              onClick={() => handleEnviarCorreo(c)}
+              className="bg-dark text-white px-3 py-1.5 rounded text-sm hover:bg-dark-soft w-full sm:w-48 text-center"
+            >
+              ✉️ Enviar correo
+            </button>
+            <button
+              onClick={() => handleCompartirWhatsapp(c)}
+              className="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 w-full sm:w-48 text-center"
+            >
+              📲 Compartir WhatsApp
             </button>
           </div>
         </div>

@@ -10,7 +10,12 @@ export const actualizarTrabajo = (id, data) => api.patch(`trabajos-maestranza/${
 export const actualizarProgreso = (id, data) => api.patch(`trabajos-maestranza/${id}/actualizar_progreso/`, data)
 export const aprobarTrabajo = (id) => api.patch(`trabajos-maestranza/${id}/aprobar/`)
 export const marcarCompletado = (id) => api.patch(`trabajos-maestranza/${id}/marcar_completado/`)
+export const marcarComentariosVistos = (id) => api.patch(`trabajos-maestranza/${id}/marcar_comentarios_vistos/`)
 export const elegirEntrega = (id, data) => api.patch(`trabajos-maestranza/${id}/elegir_entrega/`, data)
+export const actualizarFoto = (id, formData) =>
+  api.patch(`trabajos-maestranza/${id}/actualizar_foto/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}/agregar_material/`, data)
 export const reportarRetraso = (id, motivo) => api.patch(`trabajos-maestranza/${id}/reportar_retraso/`, { motivo })
 
