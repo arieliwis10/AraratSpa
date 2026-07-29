@@ -5,6 +5,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import EmailMultiAlternatives
 from django.db import models
 from rest_framework.views import APIView
+from django.http import JsonResponse
 
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
@@ -39,6 +40,8 @@ FERRETERIA_INSUMOS_VENDEDOR_EMAIL = 'ariel_18gol@hotmail.com'
 REPUESTOS_FROM_EMAIL = 'soldadurasararat@gmail.com'  # usado como reply_to
 REPUESTOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
 
+def health_check(request):
+    return JsonResponse({"status": "ok"})
 
 def _notificar_responsables(trabajo):
     """
