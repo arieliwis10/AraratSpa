@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda, PushSubscription
 )
 
 
@@ -321,3 +321,8 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
         ]
         read_only_fields = ['created_at']
+
+class PushSubscriptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PushSubscription
+        fields = ['endpoint', 'p256dh', 'auth']

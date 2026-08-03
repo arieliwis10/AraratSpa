@@ -4,7 +4,7 @@ from datetime import date
 from calendar import monthrange
 from decimal import Decimal, ROUND_HALF_UP
 from django.utils import timezone
-
+from django.conf import settings
 
 class Empresa(models.Model):
     nombre = models.CharField(max_length=150)
@@ -705,3 +705,13 @@ class Cotizacion(models.Model):
 
     def __str__(self):
         return f"Cotización {self.folio} — {self.empresa or self.mandante}"
+
+class PushSubscription(models.Model):
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.URLField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Suscripción Push"

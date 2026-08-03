@@ -52,6 +52,9 @@ api.interceptors.response.use(
         )
 
         localStorage.setItem('access_token', data.access)
+        if (data.refresh) {
+          localStorage.setItem('refresh_token', data.refresh)
+        }
         processQueue(null, data.access)
         originalRequest.headers.Authorization = `Bearer ${data.access}`
         return api(originalRequest)

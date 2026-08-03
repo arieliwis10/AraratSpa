@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import fondoLogin from '../assets/fondo-login.jpg'
+import { suscribirsePush } from '../utils/pushNotifications'
+import { guardarPushSubscription } from '../api/usuarios'
 
 function IconoOjo({ visible }) {
   if (visible) {
@@ -22,6 +24,22 @@ function IconoOjo({ visible }) {
   )
 }
 
+// Pide permiso de notificaciones y registra la suscripción en el backend.
+// Se llama después de un login exitoso, dentro del mismo gesto de usuario
+// (submit del form), para que Notification.requestPermission() funcione
+// bien en iOS Safari. Si algo falla, no bloquea el login: es una mejora,
+// no un requisito para poder entrar al sistema.
+async function activarNotificaciones() {
+  try {
+    const subscription = await suscribirsePush()
+    if (subscription) {
+      await guardarPushSubscription(subscription)
+    }
+  } catch (err) {
+    console.error('Error activando notificaciones push:', err)
+  }
+}
+
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -37,6 +55,11 @@ export default function Login() {
     setCargando(true)
     try {
       const perfil = await login(username, password)
+
+      // Se dispara sin "await" para no atrasar la navegación esperando
+      // que el usuario acepte/rechace el permiso de notificaciones.
+      activarNotificaciones()
+
       if (perfil.rol === 'ADMIN') navigate('/admin')
       else if (perfil.rol === 'TRABAJADOR') navigate('/trabajador')
       else navigate('/cliente')

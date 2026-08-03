@@ -6,12 +6,16 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import models
 from rest_framework.views import APIView
 from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 import base64
 
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda,
+    PushSubscription
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
@@ -21,6 +25,7 @@ from .serializers import (
     ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer,
     CotizacionSerializer, TareaAgendaSerializer
 )
+from .push_utils import enviar_push
 
 
 class EsAdmin(permissions.BasePermission):
@@ -45,6 +50,18 @@ REPUESTOS_JEFE_EMAIL = 'ventasrepuestos@araratchile.com'
 
 def health_check(request):
     return JsonResponse({"status": "ok"})
+
+
+def _notificar_admins_push(titulo, cuerpo, url='/admin'):
+    """
+    Manda un push a todos los usuarios ADMIN que tengan al menos una
+    suscripción activa. Es el equivalente push de
+    Usuario.objects.filter(rol='ADMIN') que ya usás para los emails a admins.
+    """
+    admins = Usuario.objects.filter(rol='ADMIN')
+    for admin in admins:
+        enviar_push(admin, titulo, cuerpo, url)
+
 
 def _notificar_responsables(trabajo):
     """
@@ -184,6 +201,14 @@ def _notificar_responsables(trabajo):
     except Exception:
         pass
 
+    if trabajo.cliente:
+        enviar_push(
+            trabajo.cliente,
+            f'Trabajo #{trabajo.correlativo} completado',
+            'Elige retiro o despacho para tu pedido.',
+            '/cliente'
+        )
+
 def _notificar_reserva_maquina(reserva):
     """
     Envía un correo al cliente que hizo la reserva y al responsable
@@ -297,6 +322,13 @@ def _notificar_reserva_maquina(reserva):
     except Exception:
         pass
 
+    # Push a los admins: es a ellos a quienes les corresponde aprobar/rechazar
+    _notificar_admins_push(
+        'Nueva solicitud de arriendo',
+        f'{reserva.maquina.nombre} — pendiente de aprobación',
+        '/admin'
+    )
+
 def _notificar_reserva_aprobada(reserva):
     """
     Envía un correo al cliente y al responsable cuando el admin aprueba
@@ -398,6 +430,13 @@ def _notificar_reserva_aprobada(reserva):
         email.send(fail_silently=True)
     except Exception:
         pass
+
+    enviar_push(
+        reserva.cliente,
+        'Arriendo aprobado',
+        f'{reserva.maquina.nombre} — tu reserva fue aprobada.',
+        '/cliente'
+    )
 
 def _enviar_correo_pedido(pedido, destinatarios, asunto, mostrar_precio, reply_to):
     """
@@ -559,6 +598,15 @@ def _notificar_pedido_ferreteria(pedido):
             mostrar_precio=True, reply_to=REPUESTOS_FROM_EMAIL
         )
 
+    # Estos destinatarios (jefe/vendedor de ferretería) son emails externos,
+    # no Usuarios del sistema, así que no reciben push - solo email.
+    # Sí avisamos a los admins internos, igual que con las demás solicitudes.
+    _notificar_admins_push(
+        f'Nuevo pedido de {categoria_label}',
+        f'{nombre_empresa} — revisar en el sistema',
+        '/admin'
+    )
+
 
 class EmpresaViewSet(viewsets.ModelViewSet):
     queryset = Empresa.objects.all()
@@ -694,6 +742,12 @@ def _notificar_nuevo_trabajo(trabajo):
     except Exception:
         pass
 
+    _notificar_admins_push(
+        f'Nueva solicitud de {categoria_label}',
+        f'{nombre_empresa} — {nombre_responsable}',
+        '/admin'
+    )
+
 
 def _notificar_trabajo_aprobado(trabajo):
     """
@@ -787,6 +841,14 @@ def _notificar_trabajo_aprobado(trabajo):
     except Exception:
         pass
 
+    if trabajo.cliente:
+        enviar_push(
+            trabajo.cliente,
+            f'Trabajo #{trabajo.correlativo} en proceso',
+            'Tu solicitud fue aprobada y ya está en curso.',
+            '/cliente'
+        )
+
 
 def _notificar_comentario_admin(trabajo, comentario):
     """
@@ -822,6 +884,12 @@ def _notificar_comentario_admin(trabajo, comentario):
     except Exception:
         pass
 
+    _notificar_admins_push(
+        f'Nuevo comentario — Trabajo #{trabajo.correlativo}',
+        f'{autor} ({nombre_empresa}): {comentario.mensaje[:80]}',
+        '/admin'
+    )
+
 
 def _notificar_completado_admin(trabajo):
     """Correo a los admins cuando un trabajo se marca como Terminado."""
@@ -851,6 +919,12 @@ def _notificar_completado_admin(trabajo):
         email.send(fail_silently=True)
     except Exception:
         pass
+
+    _notificar_admins_push(
+        f'Trabajo #{trabajo.correlativo} completado',
+        f'{nombre_empresa} — ya se notificó al cliente',
+        '/admin'
+    )
 
 
 def _notificar_modalidad_admin(trabajo):
@@ -886,6 +960,12 @@ def _notificar_modalidad_admin(trabajo):
     except Exception:
         pass
 
+    _notificar_admins_push(
+        f'Modalidad elegida — Trabajo #{trabajo.correlativo}',
+        f'{nombre_empresa}: {modalidad_label}',
+        '/admin'
+    )
+
 
 class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
     serializer_class = TrabajoMaestranzaSerializer
@@ -915,9 +995,19 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         estaba_aprobado = serializer.instance.aprobado
+        asignado_anterior_id = serializer.instance.asignado_a_id
         trabajo = serializer.save()
         if trabajo.aprobado and not estaba_aprobado:
             _notificar_trabajo_aprobado(trabajo)
+        # Aviso push al Trabajador cuando se le asigna (o reasigna) el trabajo.
+        # No hay email para esto hoy, así que el push es el único aviso instantáneo.
+        if trabajo.asignado_a_id and trabajo.asignado_a_id != asignado_anterior_id:
+            enviar_push(
+                trabajo.asignado_a,
+                'Nuevo trabajo asignado',
+                f'#{trabajo.correlativo} — {trabajo.descripcion[:60]}',
+                '/trabajador'
+            )
 
     def _puede_operar(self, request, trabajo):
         return request.user.rol == 'ADMIN' or trabajo.asignado_a_id == request.user.id
@@ -1032,6 +1122,12 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
         SolicitudMaterial.objects.create(trabajo=trabajo, descripcion=motivo)
 
+        _notificar_admins_push(
+            f'Retraso reportado — Trabajo #{trabajo.correlativo}',
+            motivo[:100] if motivo else 'Sin motivo especificado',
+            '/admin'
+        )
+
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
@@ -1094,6 +1190,16 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         )
         if user.rol == 'CLIENTE':
             _notificar_comentario_admin(trabajo, comentario)
+        else:
+            # Comentario del admin: avisamos al cliente por push (no había
+            # ningún aviso instantáneo para este caso).
+            if trabajo.cliente:
+                enviar_push(
+                    trabajo.cliente,
+                    f'Nuevo comentario — Trabajo #{trabajo.correlativo}',
+                    mensaje[:80],
+                    '/cliente'
+                )
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
@@ -1128,6 +1234,20 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
             solicitud.trabajo.retrasado = False
             solicitud.trabajo.save()
 
+        # Avisa por push a quien la haya originado (trabajo asignado o solicitante suelto)
+        destinatario = None
+        if solicitud.trabajo and solicitud.trabajo.asignado_a:
+            destinatario = solicitud.trabajo.asignado_a
+        elif solicitud.solicitante:
+            destinatario = solicitud.solicitante
+        if destinatario:
+            enviar_push(
+                destinatario,
+                'Solicitud resuelta',
+                solicitud.descripcion[:80],
+                '/trabajador'
+            )
+
     def _puede_operar_solicitud(self, request, solicitud):
         user = request.user
         if user.rol == 'ADMIN':
@@ -1149,6 +1269,11 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
 
         solicitud = SolicitudMaterial.objects.create(
             solicitante=request.user, descripcion=descripcion
+        )
+        _notificar_admins_push(
+            'Nueva solicitud de herramienta/material',
+            f'{request.user.username}: {descripcion[:80]}',
+            '/admin'
         )
         return Response(SolicitudMaterialSerializer(solicitud).data, status=201)
 
@@ -1268,6 +1393,13 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
 
         if nuevo_estado == 'APROBADA' and estado_anterior != 'APROBADA':
             _notificar_reserva_aprobada(reserva)
+        elif nuevo_estado == 'RECHAZADA' and estado_anterior != 'RECHAZADA':
+            enviar_push(
+                reserva.cliente,
+                'Arriendo rechazado',
+                f'{reserva.maquina.nombre} — tu solicitud fue rechazada.',
+                '/cliente'
+            )
 
         return Response(ReservaMaquinaSerializer(reserva).data)
 
@@ -1372,6 +1504,12 @@ class PedidoFerreteriaViewSet(viewsets.ModelViewSet):
         pedido = self.get_object()
         pedido.estado = 'REVISADO'
         pedido.save()
+        enviar_push(
+            pedido.cliente,
+            'Pedido revisado',
+            f'{pedido.get_categoria_display()} — tu pedido fue revisado.',
+            '/cliente'
+        )
         return Response(PedidoFerreteriaSerializer(pedido).data)
 
 
@@ -1471,6 +1609,12 @@ class PedidoGasViewSet(viewsets.ModelViewSet):
                 cantidad=item.get('cantidad', 1),
             )
 
+        _notificar_admins_push(
+            'Nuevo pedido de Gas Licuado',
+            f'{user.empresa.nombre if user.empresa else user.username} — {len(items)} ítem(s)',
+            '/admin'
+        )
+
         return Response(PedidoGasSerializer(pedido).data, status=201)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
@@ -1483,6 +1627,12 @@ class PedidoGasViewSet(viewsets.ModelViewSet):
                     item.producto.save()
             pedido.estado = 'REVISADO'
             pedido.save()
+            enviar_push(
+                pedido.cliente,
+                'Pedido de gas revisado',
+                'Tu pedido de Gas Licuado fue revisado.',
+                '/cliente'
+            )
         return Response(PedidoGasSerializer(pedido).data)
 
 class ResumenPendientesView(APIView):
@@ -1694,7 +1844,14 @@ class TareaAgendaViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
-        serializer.save(creado_por=self.request.user)
+        tarea = serializer.save(creado_por=self.request.user)
+        if tarea.asignado_a:
+            enviar_push(
+                tarea.asignado_a,
+                'Nueva tarea en tu agenda',
+                f'{tarea.titulo} — {tarea.fecha.strftime("%d/%m/%Y")}',
+                '/trabajador'
+            )
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def marcar_completada(self, request, pk=None):
@@ -1705,3 +1862,25 @@ class TareaAgendaViewSet(viewsets.ModelViewSet):
         tarea.completada = not tarea.completada
         tarea.save()
         return Response(TareaAgendaSerializer(tarea).data)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def guardar_push_subscription(request):
+    endpoint = request.data.get('endpoint')
+    keys = request.data.get('keys', {})
+    p256dh = keys.get('p256dh')
+    auth = keys.get('auth')
+
+    if not endpoint or not p256dh or not auth:
+        return Response({'error': 'Datos de suscripción incompletos'}, status=400)
+
+    # update_or_create evita duplicados si el mismo dispositivo se re-suscribe
+    PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            'usuario': request.user,
+            'p256dh': p256dh,
+            'auth': auth,
+        }
+    )
+    return Response({'status': 'ok'})

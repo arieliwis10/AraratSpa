@@ -16,3 +16,6 @@ export const crearResponsable = (data) => api.post('responsables/', data)
 export const actualizarResponsable = (id, data) => api.patch(`responsables/${id}/`, data)
 export const eliminarResponsable = (id) => api.delete(`responsables/${id}/`)
 export const getResumenCliente = () => api.get('resumen-cliente/')
+export const guardarPushSubscription = (subscription) => {
+  return api.post('/push-subscription/', subscription.toJSON());
+};
