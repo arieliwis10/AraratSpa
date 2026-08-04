@@ -138,7 +138,7 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, o
       `Hola ${nombre}, te compartimos la cotización folio ${c.folio}` +
       (c.obra ? ` para la obra "${c.obra}"` : '') +
       ` por un total de $${total} (IVA incluido). ` +
-      `Descarga el PDF desde el botón "Descargar PDF" y adjúntalo aquí. ¡Gracias!`
+      `Descarga el PDF de la app "www.app.araratchile.com" `
     )
   }
 
