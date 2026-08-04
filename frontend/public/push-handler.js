@@ -16,7 +16,7 @@ self.addEventListener('push', function (event) {
     (async () => {
       await self.registration.showNotification(title, options);
 
-      if (badgeSupported) {
+      if ('setAppBadge' in self.navigator) {
         try {
           if (data.badgeCount && data.badgeCount > 0) {
             await self.navigator.setAppBadge(data.badgeCount);
