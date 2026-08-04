@@ -30,7 +30,11 @@ export default function DashboardTrabajador() {
   cargarTrabajos()
   cargarSolicitudes()
   cargarProductosFlexibles()
-}, [])
+
+  if ('clearAppBadge' in navigator) {
+    navigator.clearAppBadge()
+    }
+  }, [])
 
   async function cargarTrabajos() {
     setCargando(true)

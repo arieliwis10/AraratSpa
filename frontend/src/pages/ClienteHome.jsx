@@ -18,10 +18,14 @@ export default function ClienteHome() {
   const navigate = useNavigate()
   const [resumen, setResumen] = useState({ maestranza: 0, arriendos: 0 })
 
-  useEffect(() => {
+useEffect(() => {
     getResumenCliente()
       .then((res) => setResumen(res.data))
       .catch(() => {})
+
+    if ('clearAppBadge' in navigator) {
+      navigator.clearAppBadge()
+    }
   }, [])
 
   return (

@@ -37,7 +37,11 @@ export default function DashboardAdmin() {
 
   useEffect(() => {
     cargarPendientes()
-  }, [])
+
+    if ('clearAppBadge' in navigator) {
+      navigator.clearAppBadge()
+    }
+    }, [])
 
   return (
     <div className="relative min-h-screen w-full">
