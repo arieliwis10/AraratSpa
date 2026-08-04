@@ -1,20 +1,22 @@
 self.addEventListener('push', function (event) {
   const data = event.data ? event.data.json() : {};
 
-  const title = data.title || 'AraratSpa';
+  const badgeSupported = 'setAppBadge' in self.navigator;
+  const title = (data.title || 'AraratSpa') + (badgeSupported ? '' : ' [SIN BADGE API]');
+
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    badge: '/notification-icon-96.png',
     vibrate: [200, 100, 200],
-    data: { url: data.url || '/' }, // para saber a dónde navegar al hacer click
+    data: { url: data.url || '/' },
   };
 
   event.waitUntil(
     (async () => {
       await self.registration.showNotification(title, options);
 
-      if ('setAppBadge' in self.navigator) {
+      if (badgeSupported) {
         try {
           if (data.badgeCount && data.badgeCount > 0) {
             await self.navigator.setAppBadge(data.badgeCount);
