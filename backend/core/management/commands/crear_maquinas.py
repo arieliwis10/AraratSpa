@@ -2,38 +2,33 @@ from django.core.management.base import BaseCommand, CommandError
 from core.models import Maquina
 
 
-# Descripción por defecto para las máquinas autocargables A4B 20.
-# Se usa automáticamente si no pasás --descripcion al correr el comando.
-DESCRIPCION_AUTOCARGABLE_A4B_20 = (
-    "- Autocargable Reforzado\n"
-    "- Capacidad 4 Bins\n"
-    "- Incluye 1 Neumatico de Repuesto\n"
-    "- Sistema Hidraulico Doble Seguridad\n"
-    "- Sistema de Lubricacion En Balancin, Masa\n"
-    "- Sistema de Lubricacion En Transmision Cadena"
-)
-
-
 class Command(BaseCommand):
     help = (
         'Crea varias máquinas iguales de una vez (mismo nombre base numerado '
-        'correlativamente con guión, ej: "Autocargable A4B 20-1", '
-        '"Autocargable A4B 20-2", etc.), misma descripción y precios. Útil '
-        'para cargar lotes de maquinaria idéntica sin pasar una por una por '
-        'el formulario del panel admin. Después se entra al panel a subirle '
-        'la foto a cada una individualmente.'
+        'correlativamente con guión, ej: "G2.5T 10-80", "G2.5T 10-81", etc.), '
+        'misma descripción y precios. Útil para cargar lotes de maquinaria '
+        'idéntica sin pasar una por una por el formulario del panel admin. '
+        'Después se entra al panel a subirle la foto a cada una individualmente.'
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--nombre-base', type=str, required=True,
-            help='Ej: "Autocargable A4B 20" -> genera "Autocargable A4B 20-1", "...-2", ...'
+            help='Ej: "G2.5T 10" -> genera "G2.5T 10-80", "G2.5T 10-81", ...'
         )
         parser.add_argument('--cantidad', type=int, required=True)
         parser.add_argument(
-            '--descripcion', type=str, default=DESCRIPCION_AUTOCARGABLE_A4B_20,
-            help='Misma descripción para todas. Si no se pasa, usa la descripción '
-                 'por defecto del autocargable A4B 20 (con viñetas por guión).'
+            '--descripcion', type=str, default='',
+            help='Misma descripción para todas, pasada directo por línea de comandos. '
+                 'Si tiene tildes, paréntesis o comillas, mejor usar --descripcion-file.'
+        )
+        parser.add_argument(
+            '--descripcion-file', type=str, default=None,
+            help='Ruta a un archivo .txt con la descripción (una línea por punto, '
+                 'con guion "-" o asterisco "*" al inicio). Evita problemas de '
+                 'tildes/comillas/paréntesis que puede tener escribirla directo '
+                 'en la terminal o en el campo de cPanel. Si se pasa, tiene '
+                 'prioridad sobre --descripcion.'
         )
         parser.add_argument('--precio-dia', type=str, default=None)
         parser.add_argument('--precio-semana', type=str, default=None)
@@ -54,6 +49,23 @@ class Command(BaseCommand):
         cantidad = options['cantidad']
         descripcion = options['descripcion']
         desde = options['desde']
+
+        if options['descripcion_file']:
+            try:
+                with open(options['descripcion_file'], encoding='utf-8') as f:
+                    descripcion = f.read().strip()
+            except FileNotFoundError:
+                raise CommandError(
+                    f"No se encontró el archivo '{options['descripcion_file']}'. "
+                    f"Verifica la ruta (relativa a donde estás parado al correr el comando, "
+                    f"normalmente la carpeta del proyecto donde está manage.py)."
+                )
+
+        if not descripcion:
+            raise CommandError(
+                'Falta la descripción. Pasa --descripcion "texto con guiones" '
+                'o --descripcion-file ruta/al/archivo.txt'
+            )
 
         if cantidad <= 0:
             raise CommandError('La cantidad debe ser mayor a 0')
