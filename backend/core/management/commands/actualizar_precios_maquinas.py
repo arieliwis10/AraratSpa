@@ -55,3 +55,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'Se actualizaron {actualizadas} máquinas que empiezan con "{prefijo}-".'
         ))
+
+
+# manage.py actualizar_precios_maquinas --nombre-base Autocargable_A4B_20 --precio-dia 45000
+# manage.py actualizar_precios_maquinas --nombre-base Autocargable_A4B_20 --precio-dia 45000 --precio-semana 180000 --precio-mes 600000
+
+# manage.py actualizar_precios_maquinas --nombre-base Grua Horquilla G2.5T_10 --precio-dia 60000
+# manage.py actualizar_precios_maquinas --nombre-base Grua Horquilla G2.5T_10 --precio-dia 60000 --precio-semana 220000 --precio-mes 800000

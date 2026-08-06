@@ -490,16 +490,27 @@ export default function ClienteArriendo() {
                         <h3 className="font-bold text-dark text-sm leading-tight">{m.nombre}</h3>
                           {(() => {
                             const bullets = parseDescripcionBullets(m.descripcion)
-                            return bullets.length > 1 ? (
-                              <ul className="text-xs text-gray-500 list-disc pl-4 line-clamp-2 min-h-[2rem]">
-                                {bullets.map((punto, i) => (
-                                  <li key={i}>{punto}</li>
+                            if (bullets.length <= 1) {
+                              return (
+                                <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem]">
+                                  {m.descripcion || ''}
+                                </p>
+                              )
+                            }
+                            // Mostramos siempre máximo 2 puntos, cada uno truncado a una
+                            // línea con "...". No usamos line-clamp sobre el <ul> porque
+                            // Safari/iOS no lo respeta de forma confiable con <li> de
+                            // lista, y termina mostrando la lista completa sin cortar.
+                            const visibles = bullets.slice(0, 2)
+                            const hayMas = bullets.length > 2
+                            return (
+                              <ul className="text-xs text-gray-500 list-disc pl-4 min-h-[2rem]">
+                                {visibles.map((punto, i) => (
+                                  <li key={i} className="truncate">
+                                    {punto}{hayMas && i === visibles.length - 1 ? '…' : ''}
+                                  </li>
                                 ))}
                               </ul>
-                            ) : (
-                              <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem]">
-                                {m.descripcion || ''}
-                              </p>
                             )
                           })()}
                         <div className="text-primary font-bold text-xs space-y-0.5 mt-auto pt-1">
