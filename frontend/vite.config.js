@@ -44,6 +44,14 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         importScripts: ['push-handler.js'],
+        // Hace que el Service Worker nuevo se active de inmediato al
+        // instalarse (skipWaiting) y tome control de las pestañas/instancias
+        // ya abiertas sin esperar a que se cierren (clientsClaim). Sin esto,
+        // el deploy queda "cacheado" hasta que el usuario cierre por
+        // completo la app y vuelva a abrirla.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
