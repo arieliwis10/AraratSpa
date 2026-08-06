@@ -7,6 +7,8 @@ import CalendarioDisponibilidad from '../components/CalendarioDisponibilidad'
 import CarritoGas from '../components/CarritoGas'
 import BadgeEstado from '../components/BadgeEstado'
 import fondoPanel from '../assets/fondo-panel.jpg'
+import terminosArriendo from '../constants/terminosArriendo'
+import { parseDescripcionBullets } from '../utils/parseDescripcionBullets'
 
 
 const ETIQUETA_TARIFA = {
@@ -42,6 +44,37 @@ function AvisoDespacho() {
   )
 }
 
+function ModalTerminos({ onAceptar, onCerrar }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="font-bold text-dark text-lg">Términos y condiciones de arriendo</h3>
+          <button onClick={onCerrar} className="text-gray-400 hover:text-gray-600 text-xl leading-none">
+            ×
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto flex flex-col gap-4">
+          {terminosArriendo.map((seccion, i) => (
+            <div key={i}>
+              <p className="font-medium text-dark text-sm mb-1">{seccion.titulo}</p>
+              <p className="text-sm text-gray-600">{seccion.texto}</p>
+            </div>
+          ))}
+        </div>
+        <div className="p-4 border-t flex gap-2 justify-end">
+          <button onClick={onCerrar} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm">
+            Cerrar
+          </button>
+          <button onClick={onAceptar} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium">
+            Acepto los términos
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ClienteArriendo() {
   const { usuario, logout } = useAuth()
   const navigate = useNavigate()
@@ -62,6 +95,9 @@ export default function ClienteArriendo() {
   const [cotizacion, setCotizacion] = useState(null)
   const [errorCotizacion, setErrorCotizacion] = useState('')
   const [cargandoCotizacion, setCargandoCotizacion] = useState(false)
+
+  const [aceptaTerminos, setAceptaTerminos] = useState(false)
+  const [mostrarModalTerminos, setMostrarModalTerminos] = useState(false)
 
   useEffect(() => {
     cargarDatos()
@@ -121,6 +157,7 @@ export default function ClienteArriendo() {
     setResponsableId('')
     setCotizacion(null)
     setErrorCotizacion('')
+    setAceptaTerminos(false)
     setReservasDeEstaMaquina(misReservas.filter((r) => r.maquina === maquina.id))
   }
 
@@ -148,6 +185,10 @@ export default function ClienteArriendo() {
       alert('No se pudo calcular el precio para estas fechas')
       return
     }
+    if (!aceptaTerminos) {
+      alert('Debes aceptar los términos y condiciones para continuar')
+      return
+    }
     setEnviando(true)
     try {
       await crearReserva({
@@ -157,6 +198,7 @@ export default function ClienteArriendo() {
         fecha_fin: fechaFin || fechaInicio,
         modalidad_entrega: modalidad,
         direccion_entrega: modalidad === 'DESPACHO' ? direccion : '',
+        terminos_aceptados: aceptaTerminos,
       })
       alert('Reserva enviada. Queda pendiente de aprobación del admin.')
       setMaquinaActiva(null)
@@ -185,7 +227,17 @@ export default function ClienteArriendo() {
         style={{ backgroundImage: `url(${fondoPanel})` }}
       />
 
-      <header className="relative z-10 w-full bg-dark text-white px-4 md:px-8 py-4 flex justify-between items-center">
+      {mostrarModalTerminos && (
+        <ModalTerminos
+          onAceptar={() => {
+            setAceptaTerminos(true)
+            setMostrarModalTerminos(false)
+          }}
+          onCerrar={() => setMostrarModalTerminos(false)}
+        />
+      )}
+
+      <header className="relative z-10 w-full bg-dark text-white px-4 md:px-8 py-4 flex items-center gap-2">
         <button
           onClick={() => (maquinaActiva ? setMaquinaActiva(null) : navigate('/cliente'))}
           aria-label="Volver"
@@ -193,12 +245,12 @@ export default function ClienteArriendo() {
         >
           ←
         </button>
-        <h1 className="absolute left-1/2 -translate-x-1/2 text-xl md:text-2xl font-bold whitespace-nowrap">
+        <h1 className="flex-1 text-center text-xl md:text-2xl font-bold truncate px-1">
           Arriendo Maquinaria
         </h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 shrink-0">
           <span className="text-sm text-gray-300 hidden sm:inline">Hola, {usuario.username}</span>
-          <button onClick={logout} className="bg-danger text-white px-3 py-1.5 rounded text-sm hover:bg-danger-light">
+          <button onClick={logout} className="bg-danger text-white px-3 py-1.5 rounded text-sm hover:bg-danger-light whitespace-nowrap">
             Cerrar sesión
           </button>
         </div>
@@ -220,7 +272,18 @@ export default function ClienteArriendo() {
                 )}
                 <div className="p-4">
                   <h2 className="font-bold text-dark text-lg">{maquinaActiva.nombre}</h2>
-                  <p className="text-sm text-gray-600 mt-1">{maquinaActiva.descripcion}</p>
+                  {(() => {
+                    const bullets = parseDescripcionBullets(maquinaActiva.descripcion)
+                    return bullets.length > 1 ? (
+                      <ul className="text-sm text-gray-600 mt-1 list-disc pl-4 space-y-0.5">
+                        {bullets.map((punto, i) => (
+                          <li key={i}>{punto}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-600 mt-1">{maquinaActiva.descripcion}</p>
+                    )
+                  })()}
                   <div className="text-primary font-bold mt-2 space-y-0.5">
                     {preciosDeMaquina(maquinaActiva).map((p, i) => <p key={i}>{p}</p>)}
                   </div>
@@ -259,10 +322,6 @@ export default function ClienteArriendo() {
                       <p className="text-xs text-gray-500">
                         {cotizacion.dias} día{cotizacion.dias === 1 ? '' : 's'} — {ETIQUETA_TARIFA[cotizacion.tarifa_aplicada]}
                       </p>
-                      <div className="flex justify-between text-sm text-gray-700">
-                        <span>Neto</span>
-                        <span>{formatCLP(cotizacion.precio_neto)}</span>
-                      </div>
                       {modalidad === 'DESPACHO' && Number(cotizacion.precio_despacho) > 0 && (
                         <div className="flex justify-between text-sm text-gray-700">
                           <span>Despacho</span>
@@ -270,8 +329,8 @@ export default function ClienteArriendo() {
                         </div>
                       )}
                       <div className="flex justify-between text-sm font-bold text-dark border-t pt-1 mt-1">
-                        <span>Total IVA Incluido</span>
-                        <span>{formatCLP(cotizacion.precio_total)}</span>
+                        <span>Total</span>
+                        <span>{formatCLP(cotizacion.precio_neto)}</span>
                       </div>
                       <div className="pt-1">
                         <AvisoDespacho />
@@ -331,9 +390,30 @@ export default function ClienteArriendo() {
                 </div>
               )}
 
+              {aceptaTerminos ? (
+                <div className="flex items-center justify-between gap-2 text-sm bg-green-50 border border-green-200 rounded p-2">
+                  <span className="text-green-700 font-medium">✓ Términos y condiciones aceptados</span>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarModalTerminos(true)}
+                    className="text-primary underline hover:text-primary-light text-xs shrink-0"
+                  >
+                    Revisar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalTerminos(true)}
+                  className="w-full border border-primary text-primary py-2 rounded hover:bg-primary/5 font-medium text-sm"
+                >
+                  Leer y aceptar los términos y condiciones
+                </button>
+              )}
+
               <button
                 onClick={handleReservar}
-                disabled={!fechaInicio || !cotizacion || !responsableId || cargandoCotizacion || enviando}
+                disabled={!fechaInicio || !cotizacion || !responsableId || !aceptaTerminos || cargandoCotizacion || enviando}
                 className="w-full bg-primary text-white py-2 rounded hover:bg-primary-light font-medium disabled:opacity-50"
               >
                 {enviando ? 'Enviando...' : 'Solicitar reserva'}
@@ -408,9 +488,20 @@ export default function ClienteArriendo() {
                       </div>
                       <div className="p-3 flex flex-col gap-1 flex-1">
                         <h3 className="font-bold text-dark text-sm leading-tight">{m.nombre}</h3>
-                        {m.descripcion && (
-                          <p className="text-xs text-gray-500 line-clamp-2">{m.descripcion}</p>
-                        )}
+                          {(() => {
+                            const bullets = parseDescripcionBullets(m.descripcion)
+                            return bullets.length > 1 ? (
+                              <ul className="text-xs text-gray-500 list-disc pl-4 line-clamp-2 min-h-[2rem]">
+                                {bullets.map((punto, i) => (
+                                  <li key={i}>{punto}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem]">
+                                {m.descripcion || ''}
+                              </p>
+                            )
+                          })()}
                         <div className="text-primary font-bold text-xs space-y-0.5 mt-auto pt-1">
                           {preciosDeMaquina(m).map((p, i) => <p key={i}>{p}</p>)}
                         </div>

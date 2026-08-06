@@ -306,6 +306,8 @@ class ReservaMaquina(models.Model):
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     visto = models.BooleanField(default=False)  # si el cliente ya revisó la aprobación
+    terminos_aceptados = models.BooleanField(default=False)
+    fecha_aceptacion_terminos = models.DateTimeField(null=True, blank=True)
 
     # Precio calculado al momento de crear la reserva (queda "congelado"
     # aunque después cambien los precios de la máquina).
@@ -652,6 +654,18 @@ class TareaAgenda(models.Model):
 class Cotizacion(models.Model):
     trabajo = models.ForeignKey(
         TrabajoMaestranza, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones'
+    )
+    reserva_maquina = models.ForeignKey(
+        ReservaMaquina, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones'
+    )
+    pedido_ferreteria = models.ForeignKey(
+        PedidoFerreteria, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones'
+    )
+    pedido_gas = models.ForeignKey(
+        PedidoGas, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='cotizaciones'
     )
     empresa = models.ForeignKey(

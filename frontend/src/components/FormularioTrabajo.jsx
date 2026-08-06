@@ -24,6 +24,12 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
 
   async function handleSubmit(e) {
     e.preventDefault()
+
+    if (responsables.length > 0 && !responsable) {
+      alert('Selecciona quién de tu empresa encarga este trabajo')
+      return
+    }
+
     setEnviando(true)
     const formData = new FormData()
     formData.append('categoria', categoria)
@@ -76,7 +82,7 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
             onChange={(e) => setResponsable(e.target.value)}
             className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            <option value="">Sin especificar</option>
+            <option value="">Selecciona un responsable</option>
             {responsables.map((r) => (
               <option key={r.id} value={r.id}>{r.nombre}</option>
             ))}

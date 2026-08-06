@@ -2,13 +2,34 @@ import { useState } from 'react'
 import { generarCotizacionPDF } from '../utils/generarCotizacionPDF'
 import { crearCotizacion, actualizarCotizacion } from '../api/cotizaciones'
 
-export default function CotizacionModal({ trabajo = null, cotizacionExistente = null, empresas = [], onCerrar }) {
+const ETIQUETA_TARIFA_COTIZACION = {
+  dia: 'tarifa diaria',
+  semana: 'tarifa semanal',
+  mes: 'tarifa mensual',
+}
+
+function itemsDePedido(pedido) {
+  return (pedido.items || []).map((it) => ({
+    detalle: it.sku ? `${it.nombre} (SKU: ${it.sku})` : it.nombre,
+    cantidad: String(it.cantidad || 1),
+    precioUnitario: it.precio ? String(it.precio) : '',
+  }))
+}
+
+export default function CotizacionModal({
+  trabajo = null, reserva = null, pedido = null, pedidoTipo = null,
+  cotizacionExistente = null, empresas = [], onCerrar,
+}) {
   const esEdicion = !!cotizacionExistente
-  // "vinculado a un trabajo" puede venir de dos lados: se abrió desde un
-  // trabajo real (prop `trabajo`), o se está editando una cotización que
-  // ya tenía un trabajo asociado (cotizacionExistente.trabajo).
+  // "vinculado a un origen" puede venir de cuatro lados: un trabajo real, una
+  // reserva de máquina, un pedido de ferretería/gas, o (al editar) lo que ya
+  // tenía asociado la cotización existente.
   const tieneTrabajoVinculado = esEdicion ? !!cotizacionExistente.trabajo : !!trabajo
-  const esPlantilla = !tieneTrabajoVinculado
+  const tieneReservaVinculada = esEdicion ? !!cotizacionExistente.reserva_maquina : !!reserva
+  const tienePedidoVinculado = esEdicion
+    ? !!(cotizacionExistente.pedido_ferreteria || cotizacionExistente.pedido_gas)
+    : !!pedido
+  const esPlantilla = !tieneTrabajoVinculado && !tieneReservaVinculada && !tienePedidoVinculado
 
   const [modoCliente, setModoCliente] = useState(
     esEdicion && cotizacionExistente.cliente_email ? 'persona' : 'empresa'
@@ -20,10 +41,18 @@ export default function CotizacionModal({ trabajo = null, cotizacionExistente = 
   )
 
   const [obra, setObra] = useState(
-    esEdicion ? (cotizacionExistente.obra || '') : (trabajo?.descripcion || '')
+    esEdicion
+      ? (cotizacionExistente.obra || '')
+      : (trabajo?.descripcion || reserva?.maquina_nombre || pedido?.centro_costo || '')
   )
   const [mandante, setMandante] = useState(
-    esEdicion ? (cotizacionExistente.mandante || '') : (trabajo?.empresa_nombre || trabajo?.cliente_nombre || '')
+    esEdicion
+      ? (cotizacionExistente.mandante || '')
+      : (
+          trabajo?.empresa_nombre || trabajo?.cliente_nombre ||
+          reserva?.empresa_nombre || reserva?.cliente_nombre ||
+          pedido?.empresa_nombre || pedido?.cliente_nombre || ''
+        )
   )
   const [lugarTrabajo, setLugarTrabajo] = useState(esEdicion ? (cotizacionExistente.lugar_trabajo || '') : '')
   const [validezDias, setValidezDias] = useState(
@@ -32,11 +61,26 @@ export default function CotizacionModal({ trabajo = null, cotizacionExistente = 
   const [items, setItems] = useState(
     esEdicion
       ? cotizacionExistente.items
-      : (trabajo?.materiales || []).map((m) => ({
-          detalle: `${m.nombre} — ${m.cantidad}`,
-          cantidad: '1',
-          precioUnitario: '',
-        }))
+      : trabajo
+        ? (trabajo.materiales || []).map((m) => ({
+            detalle: `${m.nombre} — ${m.cantidad}`,
+            cantidad: '1',
+            precioUnitario: '',
+          }))
+        : reserva
+          ? [
+              {
+                detalle: `Arriendo ${reserva.maquina_nombre} — ${reserva.dias} día${reserva.dias === 1 ? '' : 's'} (${ETIQUETA_TARIFA_COTIZACION[reserva.tarifa_aplicada] || ''})`,
+                cantidad: '1',
+                precioUnitario: reserva.precio_neto ? String(reserva.precio_neto) : '',
+              },
+              ...(Number(reserva.precio_despacho) > 0
+                ? [{ detalle: 'Despacho', cantidad: '1', precioUnitario: String(reserva.precio_despacho) }]
+                : []),
+            ]
+          : pedido
+            ? itemsDePedido(pedido)
+            : []
   )
   const [notas, setNotas] = useState(esEdicion ? (cotizacionExistente.notas || '') : '')
   const [folioAsignado, setFolioAsignado] = useState(esEdicion ? cotizacionExistente.folio : null)
@@ -98,6 +142,19 @@ export default function CotizacionModal({ trabajo = null, cotizacionExistente = 
         ? `${cotizacionExistente.trabajo_categoria_display} #${cotizacionExistente.trabajo_correlativo}`
         : `#${trabajo.correlativo} ${trabajo.categoria_display}`
     }
+    if (tieneReservaVinculada) {
+      return esEdicion
+        ? `Arriendo — ${cotizacionExistente.reserva_maquina_maquina_nombre || ''}`
+        : `Arriendo — ${reserva.maquina_nombre}`
+    }
+    if (tienePedidoVinculado) {
+      if (esEdicion) {
+        return cotizacionExistente.pedido_ferreteria
+          ? `Pedido — ${cotizacionExistente.pedido_ferreteria_categoria_display || 'Ferretería'}`
+          : 'Pedido — Gas Licuado'
+      }
+      return pedidoTipo === 'ferreteria' ? `Pedido — ${pedido.categoria_display}` : 'Pedido — Gas Licuado'
+    }
     return ordenTrabajoManual.trim() || '-'
   }
 
@@ -116,6 +173,13 @@ export default function CotizacionModal({ trabajo = null, cotizacionExistente = 
 
     const payload = {
       trabajo: esEdicion ? (cotizacionExistente.trabajo || null) : (trabajo?.id || null),
+      reserva_maquina: esEdicion ? (cotizacionExistente.reserva_maquina || null) : (reserva?.id || null),
+      pedido_ferreteria: esEdicion
+        ? (cotizacionExistente.pedido_ferreteria || null)
+        : (pedidoTipo === 'ferreteria' ? (pedido?.id || null) : null),
+      pedido_gas: esEdicion
+        ? (cotizacionExistente.pedido_gas || null)
+        : (pedidoTipo === 'gas' ? (pedido?.id || null) : null),
       empresa: esPlantilla && modoCliente === 'empresa' ? empresaId : null,
       cliente_email: esPersonaSinEmpresa ? clienteEmail.trim() : null,
       orden_trabajo_manual: esPlantilla ? ordenTrabajoManual.trim() : '',
@@ -164,7 +228,11 @@ export default function CotizacionModal({ trabajo = null, cotizacionExistente = 
               ? `Editar cotización — Folio ${cotizacionExistente.folio}`
               : trabajo
                 ? `Cotización — ${trabajo.categoria_display} #${trabajo.correlativo}`
-                : 'Nueva cotización'}
+                : reserva
+                  ? `Cotización — Arriendo ${reserva.maquina_nombre}`
+                  : pedido
+                    ? `Cotización — ${pedidoTipo === 'ferreteria' ? pedido.categoria_display : 'Gas Licuado'}`
+                    : 'Nueva cotización'}
           </h2>
           <button onClick={onCerrar} className="text-gray-400 hover:text-dark text-xl leading-none">✕</button>
         </div>

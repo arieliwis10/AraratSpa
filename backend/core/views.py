@@ -225,11 +225,15 @@ def _notificar_reserva_maquina(reserva):
 
     destinatarios = list(destinatarios)
     nombre_responsable = reserva.responsable.nombre if reserva.responsable else 'Sin especificar'
+    fecha_aceptacion_fmt = (
+        reserva.fecha_aceptacion_terminos.strftime('%d/%m/%Y %H:%M')
+        if reserva.fecha_aceptacion_terminos else 'No registrada'
+    )
     if reserva.modalidad_entrega == 'DESPACHO':
         modalidad_label = f'Despacho — {reserva.direccion_entrega}' if reserva.direccion_entrega else 'Despacho'
     else:
         modalidad_label = 'Retiro en local'
-    total = reserva.precio_total
+    total = reserva.precio_neto
 
     fecha_inicio_fmt = reserva.fecha_inicio.strftime('%d/%m/%Y')
     fecha_fin_fmt = reserva.fecha_fin.strftime('%d/%m/%Y')
@@ -241,14 +245,15 @@ def _notificar_reserva_maquina(reserva):
         f'Hasta: {fecha_fin_fmt}\n'
         f'Solicitado por: {nombre_responsable}\n'
         f'Modalidad: {modalidad_label}\n'
-        + (f'Total IVA incluido: ${total:,.0f}'.replace(',', '.') + '\n\n' if total is not None else '\n')
+        f'Términos y condiciones: aceptados por {nombre_responsable} el {fecha_aceptacion_fmt} hrs.\n'
+        + (f'Total + IVA: ${total:,.0f}'.replace(',', '.') + '\n\n' if total is not None else '\n')
         + f'Queda pendiente de aprobación. Puedes revisar el estado en https://app.araratchile.com\n\n'
         f'Ararat Estructuras Metálicas'
     )
 
     celda_borde = 'padding:8px 12px; border:1px solid #d1d5db; text-align:left;'
     fila_total_html = (
-        f'<tr><td style="{celda_borde} font-weight:bold;">Total IVA incluido</td>'
+        f'<tr><td style="{celda_borde} font-weight:bold;">Total + IVA</td>'
         f'<td style="{celda_borde} font-weight:bold;">${total:,.0f}</td></tr>'.replace(',', '.')
         if total is not None else ''
     )
@@ -287,6 +292,7 @@ def _notificar_reserva_maquina(reserva):
                     <tr><td style="{celda_borde} font-weight:bold;">Hasta</td><td style="{celda_borde}">{fecha_fin_fmt}</td></tr>
                     <tr><td style="{celda_borde} font-weight:bold;">Solicitado por</td><td style="{celda_borde}">{nombre_responsable}</td></tr>
                     <tr><td style="{celda_borde} font-weight:bold;">Modalidad</td><td style="{celda_borde}">{modalidad_label}</td></tr>
+                    <tr><td style="{celda_borde} font-weight:bold;">Términos y condiciones</td><td style="{celda_borde}">Aceptados el {fecha_aceptacion_fmt}</td></tr>
                     {fila_total_html}
                   </table>
                   <p style="margin:0; font-size:13px; color:#6b7280;">
@@ -1359,6 +1365,8 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
         return ReservaMaquina.objects.filter(cliente=user).order_by('-created_at')
 
     def perform_create(self, serializer):
+        from django.utils import timezone
+
         fecha_inicio = serializer.validated_data['fecha_inicio']
         fecha_fin = serializer.validated_data['fecha_fin']
         maquina = serializer.validated_data['maquina']
@@ -1377,7 +1385,12 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
                 'precio_total': cotizacion['precio_total'],
             }
 
-        reserva = serializer.save(cliente=self.request.user, estado='PENDIENTE', **extra)
+        reserva = serializer.save(
+            cliente=self.request.user,
+            estado='PENDIENTE',
+            fecha_aceptacion_terminos=timezone.now(),
+            **extra
+        )
         _notificar_reserva_maquina(reserva)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
@@ -1697,11 +1710,20 @@ class CotizacionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         trabajo = serializer.validated_data.get('trabajo')
+        reserva_maquina = serializer.validated_data.get('reserva_maquina')
+        pedido_ferreteria = serializer.validated_data.get('pedido_ferreteria')
+        pedido_gas = serializer.validated_data.get('pedido_gas')
         empresa = serializer.validated_data.get('empresa')
-        # Si no se mandó empresa explícita (caso normal: cotización desde
-        # un trabajo), se deriva de la empresa del cliente del trabajo.
+
         if not empresa and trabajo and trabajo.cliente:
             empresa = trabajo.cliente.empresa
+        elif not empresa and reserva_maquina and reserva_maquina.cliente:
+            empresa = reserva_maquina.cliente.empresa
+        elif not empresa and pedido_ferreteria and pedido_ferreteria.cliente:
+            empresa = pedido_ferreteria.cliente.empresa
+        elif not empresa and pedido_gas and pedido_gas.cliente:
+            empresa = pedido_gas.cliente.empresa
+
         serializer.save(empresa=empresa, creado_por=self.request.user)
 
     @action(detail=True, methods=['post'], permission_classes=[EsAdmin])

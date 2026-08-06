@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  getTrabajos, actualizarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
+  getTrabajos, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
   getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos
 } from '../../api/maestranza'
 import { getUsuarios, getEmpresas } from '../../api/usuarios'
@@ -23,6 +23,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [cotizando, setCotizando] = useState(null)
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState({})
   const [mostrarSinAsignar, setMostrarSinAsignar] = useState(true)
+  const [eliminando, setEliminando] = useState(null)
 
   useEffect(() => {
     cargarEmpresas()
@@ -168,6 +169,20 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
       cargarTrabajos()
     } catch (err) {
       alert('Error al aprobar el trabajo')
+    }
+  }
+
+  async function handleEliminar(id, correlativo) {
+    if (!confirm(`¿Eliminar el trabajo #${correlativo}? Esta acción no se puede deshacer.`)) return
+    setEliminando(id)
+    try {
+      await eliminarTrabajo(id)
+      if (editando?.id === id) setEditando(null)
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al eliminar el trabajo')
+    } finally {
+      setEliminando(null)
     }
   }
 
@@ -317,6 +332,16 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           ) : (
                             <p className="text-xs text-gray-400">Todavía no hay comentarios.</p>
                           )}
+                        </div>
+
+                        <div className="border-t pt-3 mt-3">
+                          <button
+                            onClick={() => handleEliminar(t.id, t.correlativo)}
+                            disabled={eliminando === t.id}
+                            className="text-danger text-xs font-medium hover:underline disabled:opacity-50"
+                          >
+                            {eliminando === t.id ? 'Eliminando...' : '🗑 Eliminar trabajo'}
+                          </button>
                         </div>
                       </div>
                     )}
@@ -647,19 +672,37 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                       </button>
                     </div>
 
-                    <div className="flex gap-2">
-                      <button onClick={guardarCambios} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium">
-                        Guardar cambios
-                      </button>
-                      <button onClick={() => setEditando(null)} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm">
-                        Cerrar
+                    <div className="flex gap-2 justify-between items-center">
+                      <div className="flex gap-2">
+                        <button onClick={guardarCambios} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium">
+                          Guardar cambios
+                        </button>
+                        <button onClick={() => setEditando(null)} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm">
+                          Cerrar
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => handleEliminar(t.id, t.correlativo)}
+                        disabled={eliminando === t.id}
+                        className="text-danger text-xs font-medium hover:underline disabled:opacity-50"
+                      >
+                        {eliminando === t.id ? 'Eliminando...' : '🗑 Eliminar trabajo'}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => abrirEdicion(t)} className="text-primary text-sm font-medium hover:underline">
-                    Actualizar / asignar / materiales
-                  </button>
+                  <div className="flex justify-between items-center">
+                    <button onClick={() => abrirEdicion(t)} className="text-primary text-sm font-medium hover:underline">
+                      Actualizar / asignar / materiales
+                    </button>
+                    <button
+                      onClick={() => handleEliminar(t.id, t.correlativo)}
+                      disabled={eliminando === t.id}
+                      className="text-danger text-xs font-medium hover:underline disabled:opacity-50"
+                    >
+                      {eliminando === t.id ? 'Eliminando...' : '🗑 Eliminar'}
+                    </button>
+                  </div>
                 )}
               </div>
             )}

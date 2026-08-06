@@ -7,6 +7,8 @@ import {
 } from '../../api/arriendo'
 import { getUsuarios } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
+import CotizacionModal from '../CotizacionModal'
+import { parseDescripcionBullets } from '../../utils/parseDescripcionBullets'
 
 const TIPOS_GAS = [
   { valor: 'KG5', etiqueta: 'Gas licuado 5kg' },
@@ -222,7 +224,18 @@ function ProductosMaquinas() {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-dark">{m.nombre}</h3>
-                  <p className="text-sm text-gray-500">{m.descripcion}</p>
+                  {(() => {
+                    const bullets = parseDescripcionBullets(m.descripcion)
+                    return bullets.length > 1 ? (
+                      <ul className="text-sm text-gray-500 list-disc pl-4 space-y-0.5">
+                        {bullets.map((punto, i) => (
+                          <li key={i}>{punto}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-gray-500">{m.descripcion}</p>
+                    )
+                  })()}
                   <div className="text-primary text-sm font-medium mt-1 space-y-0.5">
                     {m.precio_dia && <p>${Number(m.precio_dia).toLocaleString('es-CL')} / día</p>}
                     {m.precio_semana && <p>${Number(m.precio_semana).toLocaleString('es-CL')} / semana</p>}
@@ -250,6 +263,7 @@ function PedidosMaquinas({ onPendientesChange }) {
   const [clientes, setClientes] = useState([])
   const [filtroCliente, setFiltroCliente] = useState('')
   const [cargando, setCargando] = useState(true)
+  const [cotizando, setCotizando] = useState(null)
 
   useEffect(() => {
     getUsuarios().then((res) => setClientes(res.data.filter((u) => u.rol === 'CLIENTE')))
@@ -340,14 +354,26 @@ function PedidosMaquinas({ onPendientesChange }) {
                   </div>
                 )}
                 {r.estado === 'APROBADA' && (
-                  <button onClick={() => handleCambiarEstado(r.id, 'RECHAZADA')} className="bg-danger text-white px-3 py-1 rounded text-sm hover:bg-danger-light">
-                    Cancelar reserva
-                  </button>
+                  <div className="flex gap-2 items-center">
+                    <button
+                      onClick={() => setCotizando(r)}
+                      className="text-primary text-sm font-medium hover:underline whitespace-nowrap"
+                    >
+                      💰 Generar cotización
+                    </button>
+                    <button onClick={() => handleCambiarEstado(r.id, 'RECHAZADA')} className="bg-danger text-white px-3 py-1 rounded text-sm hover:bg-danger-light whitespace-nowrap">
+                      Cancelar reserva
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {cotizando && (
+        <CotizacionModal reserva={cotizando} onCerrar={() => setCotizando(null)} />
       )}
     </div>
   )
@@ -555,6 +581,7 @@ function SeccionPedidosGas({ onPendientesChange }) {
   const [pedidos, setPedidos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [procesando, setProcesando] = useState(null)
+  const [cotizando, setCotizando] = useState(null)
 
   useEffect(() => {
     cargar()
@@ -611,17 +638,31 @@ function SeccionPedidosGas({ onPendientesChange }) {
               <li key={item.id}>{item.nombre} — x{item.cantidad}</li>
             ))}
           </ul>
-          {p.estado === 'PENDIENTE' && (
-            <button
-              onClick={() => handleMarcarRevisado(p.id)}
-              disabled={procesando === p.id}
-              className="bg-primary text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50"
-            >
-              {procesando === p.id ? 'Guardando...' : '✓ Marcar como revisado'}
-            </button>
-          )}
+          <div className="flex gap-3 flex-wrap items-center">
+            {p.estado === 'PENDIENTE' && (
+              <button
+                onClick={() => handleMarcarRevisado(p.id)}
+                disabled={procesando === p.id}
+                className="bg-primary text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50"
+              >
+                {procesando === p.id ? 'Guardando...' : '✓ Marcar como revisado'}
+              </button>
+            )}
+            {p.estado === 'REVISADO' && (
+              <button
+                onClick={() => setCotizando(p)}
+                className="text-primary text-xs font-medium hover:underline"
+              >
+                💰 Generar cotización
+              </button>
+            )}
+          </div>
         </div>
       ))}
+
+      {cotizando && (
+        <CotizacionModal pedido={cotizando} pedidoTipo="gas" onCerrar={() => setCotizando(null)} />
+      )}
     </div>
   )
 }

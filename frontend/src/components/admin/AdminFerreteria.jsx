@@ -4,6 +4,7 @@ import {
   actualizarProductoFerreteria, eliminarProductoFerreteria,
   getPedidosFerreteria, marcarPedidoRevisado
 } from '../../api/ferreteria'
+import CotizacionModal from '../CotizacionModal'
 
 const CATEGORIAS_FERRETERIA = [
   { valor: 'INSUMOS', etiqueta: 'Insumos ferretería' },
@@ -326,6 +327,7 @@ function SeccionPedidos({ onPendientesChange }) {
   const [filtroEstado, setFiltroEstado] = useState('TODOS')
   const [expandido, setExpandido] = useState({})
   const [procesando, setProcesando] = useState(null)
+  const [cotizando, setCotizando] = useState(null)
 
   useEffect(() => {
     cargar()
@@ -447,21 +449,35 @@ function SeccionPedidos({ onPendientesChange }) {
                         ))}
                       </ul>
                     </div>
-                    {p.estado === 'PENDIENTE' && (
-                      <button
-                        onClick={() => handleMarcarRevisado(p.id)}
-                        disabled={procesando === p.id}
-                        className="bg-primary text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50 w-fit"
-                      >
-                        {procesando === p.id ? 'Guardando...' : '✓ Marcar como revisado'}
-                      </button>
-                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      {p.estado === 'PENDIENTE' && (
+                        <button
+                          onClick={() => handleMarcarRevisado(p.id)}
+                          disabled={procesando === p.id}
+                          className="bg-primary text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-50 w-fit"
+                        >
+                          {procesando === p.id ? 'Guardando...' : '✓ Marcar como revisado'}
+                        </button>
+                      )}
+                      {p.estado === 'REVISADO' && (
+                        <button
+                          onClick={() => setCotizando(p)}
+                          className="text-primary text-xs font-medium hover:underline w-fit"
+                        >
+                          💰 Generar cotización
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
             )
           })}
         </div>
+      )}
+
+      {cotizando && (
+        <CotizacionModal pedido={cotizando} pedidoTipo="ferreteria" onCerrar={() => setCotizando(null)} />
       )}
     </div>
   )

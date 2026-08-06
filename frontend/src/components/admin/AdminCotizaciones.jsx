@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getCotizaciones, enviarCorreoCotizacion } from '../../api/cotizaciones'
 import { getEmpresas } from '../../api/usuarios'
-import { getReservas, getPedidosGas } from '../../api/arriendo'
-import { getPedidosFerreteria } from '../../api/ferreteria'
 import { generarCotizacionPDF, generarCotizacionPDFBase64 } from '../../utils/generarCotizacionPDF'
 import CotizacionModal from '../CotizacionModal'
 
@@ -42,6 +40,24 @@ function pasaFiltro(fechaISO, empresaId, filtroEmpresa, filtroAnio, filtroMes) {
   const pasaAnio = !filtroAnio || anioDeFecha === filtroAnio
   const pasaMes = !filtroMes || mesDeFecha === filtroMes
   return pasaEmpresa && pasaAnio && pasaMes
+}
+
+// Etiqueta de "a qué corresponde" la cotización: un trabajo de Maestranza,
+// un arriendo de máquina, o una orden de trabajo escrita a mano (cotización suelta).
+function calcularLabelOrigen(c) {
+  if (c.trabajo_categoria_display && c.trabajo_correlativo) {
+    return `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
+  }
+  if (c.reserva_maquina_maquina_nombre) {
+    return `Arriendo — ${c.reserva_maquina_maquina_nombre}`
+  }
+  if (c.pedido_ferreteria) {
+    return `Pedido — ${c.pedido_ferreteria_categoria_display || 'Ferretería'}`
+  }
+  if (c.pedido_gas) {
+    return 'Pedido — Gas Licuado'
+  }
+  return c.orden_trabajo_manual || '-'
 }
 
 function FiltrosComunes({
@@ -103,7 +119,10 @@ function FiltrosComunes({
   )
 }
 
-function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, onEditar }) {
+// Lista de tarjetas de cotizaciones ya generadas (Folio / Editar / Descargar
+// PDF / Enviar correo / WhatsApp). Sirve tanto para las de Maestranza como
+// para las de arriendo de máquinas — `filtroOrigen` decide cuáles mostrar.
+function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrigen, mensajeVacio, onEditar }) {
   const [cotizaciones, setCotizaciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [enviandoId, setEnviandoId] = useState(null)
@@ -119,9 +138,7 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, o
     generarCotizacionPDF({
       folio: c.folio,
       fechaFormateada: new Date(c.created_at).toLocaleDateString('es-CL'),
-      trabajoLabel: c.trabajo_categoria_display && c.trabajo_correlativo
-        ? `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
-        : (c.orden_trabajo_manual || '-'),
+      trabajoLabel: calcularLabelOrigen(c),
       obra: c.obra,
       mandante: c.mandante,
       lugarTrabajo: c.lugar_trabajo,
@@ -154,9 +171,7 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, o
       const pdfBase64 = await generarCotizacionPDFBase64({
         folio: c.folio,
         fechaFormateada: new Date(c.created_at).toLocaleDateString('es-CL'),
-        trabajoLabel: c.trabajo_categoria_display && c.trabajo_correlativo
-          ? `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
-          : (c.orden_trabajo_manual || '-'),
+        trabajoLabel: calcularLabelOrigen(c),
         obra: c.obra,
         mandante: c.mandante,
         lugarTrabajo: c.lugar_trabajo,
@@ -179,12 +194,14 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, o
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank')
   }
 
-  const filtradas = cotizaciones.filter((c) => pasaFiltro(c.created_at, c.empresa, filtroEmpresa, filtroAnio, filtroMes))
+  const filtradas = cotizaciones
+    .filter(filtroOrigen)
+    .filter((c) => pasaFiltro(c.created_at, c.empresa, filtroEmpresa, filtroAnio, filtroMes))
 
   if (cargando) return <p className="text-dark">Cargando...</p>
 
   if (filtradas.length === 0) {
-    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay cotizaciones de Maestranza con este filtro.</div>
+    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">{mensajeVacio}</div>
   }
 
   return (
@@ -227,98 +244,6 @@ function SeccionCotizacionesMaestranza({ filtroEmpresa, filtroMes, filtroAnio, o
               📲 Compartir WhatsApp
             </button>
           </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function SeccionMaquinas({ filtroEmpresa, filtroMes, filtroAnio }) {
-  const [reservas, setReservas] = useState([])
-  const [cargando, setCargando] = useState(true)
-
-  useEffect(() => {
-    getReservas().then((res) => {
-      setReservas(res.data.filter((r) => r.estado !== 'PENDIENTE'))
-      setCargando(false)
-    })
-  }, [])
-
-  const filtradas = reservas.filter((r) => pasaFiltro(r.created_at, r.empresa, filtroEmpresa, filtroAnio, filtroMes))
-
-  if (cargando) return <p className="text-dark">Cargando...</p>
-
-  if (filtradas.length === 0) {
-    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay reservas resueltas con este filtro.</div>
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {filtradas.map((r) => (
-        <div key={r.id} className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-start flex-wrap gap-2">
-            <div>
-              <p className="text-sm font-bold text-dark">{r.maquina_nombre}</p>
-              <p className="text-xs text-gray-500">{r.empresa_nombre || r.cliente_nombre}</p>
-              <p className="text-xs text-gray-500">{r.fecha_inicio} a {r.fecha_fin}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(r.created_at)}</p>
-            </div>
-            <span className={`text-xs px-2 py-0.5 rounded font-medium ${r.estado === 'APROBADA' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-              {r.estado}
-            </span>
-          </div>
-          {r.precio_total && (
-            <div className="mt-2 pt-2 border-t text-sm text-gray-700">
-              <p>Días: {r.dias} · Tarifa: {r.tarifa_aplicada}</p>
-              <p>Neto: ${Number(r.precio_neto).toLocaleString('es-CL')} · IVA: ${Number(r.iva).toLocaleString('es-CL')}</p>
-              <p className="font-medium text-primary">Total: ${Number(r.precio_total).toLocaleString('es-CL')}</p>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function SeccionPedidos({ tipo, filtroEmpresa, filtroMes, filtroAnio }) {
-  const [pedidos, setPedidos] = useState([])
-  const [cargando, setCargando] = useState(true)
-
-  useEffect(() => {
-    const fetcher = tipo === 'ferreteria' ? getPedidosFerreteria : getPedidosGas
-    fetcher().then((res) => {
-      setPedidos(res.data.filter((p) => p.estado === 'REVISADO'))
-      setCargando(false)
-    })
-  }, [tipo])
-
-  const filtradas = pedidos.filter((p) => pasaFiltro(p.created_at, p.empresa, filtroEmpresa, filtroAnio, filtroMes))
-
-  if (cargando) return <p className="text-dark">Cargando...</p>
-
-  if (filtradas.length === 0) {
-    return <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">No hay pedidos revisados con este filtro.</div>
-  }
-
-  return (
-    <div className="flex flex-col gap-3">
-      {filtradas.map((p) => (
-        <div key={p.id} className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-start flex-wrap gap-2 mb-2">
-            <div>
-              {p.categoria_display && <p className="text-xs font-bold text-primary uppercase">{p.categoria_display}</p>}
-              <p className="text-sm font-bold text-dark">{p.empresa_nombre || p.cliente_nombre}</p>
-              <p className="text-xs text-gray-500">
-                Solicitado por {p.responsable_nombre || 'sin especificar'}{p.centro_costo ? ` · Centro de costo: ${p.centro_costo}` : ''}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(p.created_at)}</p>
-            </div>
-          </div>
-          <ul className="text-sm text-gray-700 list-disc pl-4">
-            {p.items.map((item) => (
-              <li key={item.id}>{item.nombre} — x{item.cantidad}</li>
-            ))}
-          </ul>
         </div>
       ))}
     </div>
@@ -387,17 +312,49 @@ export default function AdminCotizaciones() {
       />
 
       {tipo === 'maestranza' && (
-        <SeccionCotizacionesMaestranza
-          key={refreshKey}
+        <SeccionCotizaciones
+          key={`maestranza-${refreshKey}`}
           filtroEmpresa={filtroEmpresa}
           filtroMes={filtroMes}
           filtroAnio={filtroAnio}
+          filtroOrigen={(c) => !!c.trabajo}
+          mensajeVacio="No hay cotizaciones de Maestranza con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
         />
       )}
-      {tipo === 'maquinas' && <SeccionMaquinas filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
-      {tipo === 'ferreteria' && <SeccionPedidos tipo="ferreteria" filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
-      {tipo === 'gas' && <SeccionPedidos tipo="gas" filtroEmpresa={filtroEmpresa} filtroMes={filtroMes} filtroAnio={filtroAnio} />}
+      {tipo === 'maquinas' && (
+        <SeccionCotizaciones
+          key={`maquinas-${refreshKey}`}
+          filtroEmpresa={filtroEmpresa}
+          filtroMes={filtroMes}
+          filtroAnio={filtroAnio}
+          filtroOrigen={(c) => !!c.reserva_maquina}
+          mensajeVacio="No hay cotizaciones de arriendo de máquinas con este filtro."
+          onEditar={(c) => setModalCotizacion(c)}
+        />
+      )}
+      {tipo === 'ferreteria' && (
+        <SeccionCotizaciones
+          key={`ferreteria-${refreshKey}`}
+          filtroEmpresa={filtroEmpresa}
+          filtroMes={filtroMes}
+          filtroAnio={filtroAnio}
+          filtroOrigen={(c) => !!c.pedido_ferreteria}
+          mensajeVacio="No hay cotizaciones de Ferretería con este filtro."
+          onEditar={(c) => setModalCotizacion(c)}
+        />
+      )}
+      {tipo === 'gas' && (
+        <SeccionCotizaciones
+          key={`gas-${refreshKey}`}
+          filtroEmpresa={filtroEmpresa}
+          filtroMes={filtroMes}
+          filtroAnio={filtroAnio}
+          filtroOrigen={(c) => !!c.pedido_gas}
+          mensajeVacio="No hay cotizaciones de Gas Licuado con este filtro."
+          onEditar={(c) => setModalCotizacion(c)}
+        />
+      )}
 
       {modalCotizacion && (
         <CotizacionModal

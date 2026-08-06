@@ -195,17 +195,23 @@ class ReservaMaquinaSerializer(serializers.ModelSerializer):
             'responsable', 'responsable_nombre',
             'fecha_inicio', 'fecha_fin', 'modalidad_entrega', 'direccion_entrega',
             'estado', 'visto', 'dias', 'tarifa_aplicada', 'precio_neto', 'precio_despacho', 'iva', 'precio_total',
+            'terminos_aceptados', 'fecha_aceptacion_terminos',
             'created_at'
         ]
         read_only_fields = [
             'cliente', 'estado', 'visto', 'dias', 'tarifa_aplicada',
-            'precio_neto', 'precio_despacho', 'iva', 'precio_total'
+            'precio_neto', 'precio_despacho', 'iva', 'precio_total',
+            'fecha_aceptacion_terminos',
         ]
 
     def validate(self, data):
         if self.instance is None and not data.get('responsable'):
             raise serializers.ValidationError({
                 'responsable': 'Debes indicar quién de tu empresa encarga este arriendo.'
+            })
+        if self.instance is None and not data.get('terminos_aceptados'):
+            raise serializers.ValidationError({
+                'terminos_aceptados': 'Debes aceptar los términos y condiciones para reservar.'
             })
         return data
 
@@ -311,13 +317,21 @@ class CotizacionSerializer(serializers.ModelSerializer):
     empresa_email = serializers.CharField(source='empresa.email', read_only=True, default=None)
     trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
     trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
+    reserva_maquina_maquina_nombre = serializers.CharField(source='reserva_maquina.maquina.nombre', read_only=True, default=None)
+    reserva_maquina_fecha_inicio = serializers.DateField(source='reserva_maquina.fecha_inicio', read_only=True, default=None)
+    reserva_maquina_fecha_fin = serializers.DateField(source='reserva_maquina.fecha_fin', read_only=True, default=None)
+    pedido_ferreteria_categoria_display = serializers.CharField(source='pedido_ferreteria.get_categoria_display', read_only=True, default=None)
 
     class Meta:
         model = Cotizacion
         fields = [
             'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
+            'reserva_maquina', 'reserva_maquina_maquina_nombre',
+            'reserva_maquina_fecha_inicio', 'reserva_maquina_fecha_fin',
+            'pedido_ferreteria', 'pedido_ferreteria_categoria_display',
+            'pedido_gas',
             'empresa', 'empresa_nombre', 'empresa_email', 'cliente_email',
-            'folio', 'obra', 'mandante', 'lugar_trabajo',
+            'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
         ]
         read_only_fields = ['created_at']
