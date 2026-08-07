@@ -175,9 +175,11 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
 
 
 class MaquinaSerializer(serializers.ModelSerializer):
+    categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
+
     class Meta:
         model = Maquina
-        fields = ['id', 'nombre', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'precio_despacho', 'activo']
+        fields = ['id', 'nombre', 'categoria', 'categoria_display', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'precio_despacho', 'activo']
 
 
 class ReservaMaquinaSerializer(serializers.ModelSerializer):

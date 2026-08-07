@@ -1,6 +1,32 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
+// Datos de cada marca que puede emitir una cotización. ARARAT es para
+// Maestranza (y pedidos de ferretería/gas); KAIROS es para arriendo de
+// maquinaria. Cambiar acá actualiza automáticamente todos los PDFs nuevos.
+//
+// ⚠️ Completar los datos reales de KAIROS antes de usar en producción.
+const MARCAS = {
+  ARARAT: {
+    logo: '/Logoararat.png',
+    nombreEmpresa: 'ARARAT ESTRUCTURAS METÁLICAS SPA.',
+    direccion: 'La Rinconada de Huelquén Sitio 4 Lote B, Paine',
+    rut: '77.145.132-2',
+    telefono: '+569 99405462',
+    emails: ['fcepeda@araratchile.com', 'ventas@araratchile.com'],
+    web: 'www.araratchile.com',
+  },
+  KAIROS: {
+    logo: '/Logokairos.png',
+    nombreEmpresa: 'KAIROS ARRIENDOS',
+    direccion: 'La Rinconada de Huelquén Sitio 4 Lote B, Paine',
+    rut: '77.747.959-8',
+    telefono: '+569 99405462',
+    emails: ['fcepeda@araratchile.com', 'kairos_arriendos@araratchile.com'],
+    web: 'www.araratchile.com',
+  },
+}
+
 function formatoCLP(valor) {
   return `$${Math.round(valor).toLocaleString('es-CL')}`
 }
@@ -18,19 +44,19 @@ export function calcularTotalesCotizacion(items) {
   return { subtotal, iva, total }
 }
 
-let logoBase64Cache = null
-async function cargarLogoBase64() {
-  if (logoBase64Cache) return logoBase64Cache
+const logoBase64Cache = {}
+async function cargarLogoBase64(marca) {
+  if (logoBase64Cache[marca]) return logoBase64Cache[marca]
   try {
-    const res = await fetch('/Logoararat.png')
+    const res = await fetch(MARCAS[marca].logo)
     const blob = await res.blob()
-    logoBase64Cache = await new Promise((resolve, reject) => {
+    logoBase64Cache[marca] = await new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onloadend = () => resolve(reader.result)
       reader.onerror = reject
       reader.readAsDataURL(blob)
     })
-    return logoBase64Cache
+    return logoBase64Cache[marca]
   } catch (err) {
     return null
   }
@@ -38,12 +64,18 @@ async function cargarLogoBase64() {
 
 // Construye el documento jsPDF, sin descargarlo ni devolver bytes todavía.
 // Uso interno de generarCotizacionPDF y generarCotizacionPDFBase64.
+//
+// 'marca' decide qué logo y datos de empresa van en el encabezado:
+// 'ARARAT' (por defecto, para Maestranza/Ferretería/Gas) o 'KAIROS'
+// (para cotizaciones de arriendo de maquinaria).
 async function construirDocCotizacion({
   folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo,
-  items, notas, validezDias,
+  items, notas, validezDias, marca = 'ARARAT',
 }) {
+  const marcaValida = marca in MARCAS ? marca : 'ARARAT'
+  const datosMarca = MARCAS[marcaValida]
   const { subtotal, iva, total } = calcularTotalesCotizacion(items)
-  const logoBase64 = await cargarLogoBase64()
+  const logoBase64 = await cargarLogoBase64(marcaValida)
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
 
@@ -67,29 +99,36 @@ async function construirDocCotizacion({
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
-  doc.text('ARARAT ESTRUCTURAS METÁLICAS SPA.', textoX, 11)
+  doc.text(datosMarca.nombreEmpresa, textoX, 11)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  doc.text('La Rinconada de Huelquén Sitio 4 Lote B, Paine', textoX, 17)
-  doc.text('RUT: 77.145.132-2   /   Cel: +569 99405462', textoX, 22)
+  doc.text(datosMarca.direccion, textoX, 17)
+  doc.text(`RUT: ${datosMarca.rut}   /   Cel: ${datosMarca.telefono}`, textoX, 22)
 
   doc.setFontSize(8)
-  doc.text('fcepeda@araratchile.com', pageWidth - 60, 9)
-  doc.text('ventas@araratchile.com', pageWidth - 60, 13)
-  doc.text('www.araratchile.com', pageWidth - 60, 17)
+  datosMarca.emails.forEach((email, i) => {
+    doc.text(email, pageWidth - 60, 9 + i * 4)
+  })
+  doc.text(datosMarca.web, pageWidth - 60, 9 + datosMarca.emails.length * 4)
 
   doc.setTextColor(0, 0, 0)
 
+  const filasInfo = [
+    ['N° Cotización', folio],
+    ['Fecha', fechaFormateada],
+    ['Orden de trabajo', trabajoLabel],
+  ]
+  // Kairos (arriendo de maquinaria) no usa el concepto de "obra" —
+  // solo Ararat (Maestranza) lo necesita.
+  if (marcaValida !== 'KAIROS') {
+    filasInfo.push(['Obra', obra || '-'])
+  }
+  filasInfo.push(['Mandante', mandante || '-'])
+  filasInfo.push(['Lugar de trabajo', lugarTrabajo || '-'])
+
   autoTable(doc, {
     startY: 36,
-    body: [
-      ['N° Cotización', folio],
-      ['Fecha', fechaFormateada],
-      ['Orden de trabajo', trabajoLabel],
-      ['Obra', obra || '-'],
-      ['Mandante', mandante || '-'],
-      ['Lugar de trabajo', lugarTrabajo || '-'],
-    ],
+    body: filasInfo,
     theme: 'grid',
     styles: { fontSize: 9, cellPadding: 2.5 },
     columnStyles: {

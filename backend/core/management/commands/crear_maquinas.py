@@ -5,16 +5,25 @@ from core.models import Maquina
 class Command(BaseCommand):
     help = (
         'Crea varias máquinas iguales de una vez (mismo nombre base numerado '
-        'correlativamente con guión, ej: "G2.5T 10-80", "G2.5T 10-81", etc.), '
-        'misma descripción y precios. Útil para cargar lotes de maquinaria '
-        'idéntica sin pasar una por una por el formulario del panel admin. '
-        'Después se entra al panel a subirle la foto a cada una individualmente.'
+        'correlativamente con guión, misma categoría, descripción y precios). '
+        'Útil para cargar lotes de maquinaria idéntica sin pasar una por una '
+        'por el formulario del panel admin. Después se entra al panel a '
+        'subirle la foto a cada una individualmente.'
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--nombre-base', type=str, required=True,
-            help='Ej: "G2.5T 10" -> genera "G2.5T 10-80", "G2.5T 10-81", ...'
+            help='Ej: "G2.5T 10" -> genera "G2.5T 10-80", "G2.5T 10-81", ... '
+                 'Si lo corres desde el campo de cPanel (que no respeta comillas '
+                 'ni espacios como un solo argumento), usa guion bajo en vez de '
+                 'espacio: "G2.5T_10" se convierte solo en "G2.5T 10".'
+        )
+        parser.add_argument(
+            '--categoria', type=str, required=True,
+            choices=['AUTOCARGABLE', 'GRUA_HORQUILLA'],
+            help='Categoría de la máquina, para que el cliente pueda filtrar '
+                 'por tipo en la app.'
         )
         parser.add_argument('--cantidad', type=int, required=True)
         parser.add_argument(
@@ -24,10 +33,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--descripcion-file', type=str, default=None,
-            help='Ruta a un archivo .txt con la descripción (una línea por punto, '
-                 'con guion "-" o asterisco "*" al inicio). Evita problemas de '
-                 'tildes/comillas/paréntesis que puede tener escribirla directo '
-                 'en la terminal o en el campo de cPanel. Si se pasa, tiene '
+            help='Ruta a un archivo .txt con la descripción. Si se pasa, tiene '
                  'prioridad sobre --descripcion.'
         )
         parser.add_argument('--precio-dia', type=str, default=None)
@@ -40,12 +46,12 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--inactivas', action='store_true',
-            help='Crearlas como inactivas (no visibles para clientes) en vez de activas por defecto. '
-                 'Útil si querés subirles la foto antes de que se vean en el catálogo.'
+            help='Crearlas como inactivas (no visibles para clientes) en vez de activas por defecto.'
         )
 
     def handle(self, *args, **options):
-        nombre_base = options['nombre_base']
+        nombre_base = options['nombre_base'].replace('_', ' ')
+        categoria = options['categoria']
         cantidad = options['cantidad']
         descripcion = options['descripcion']
         desde = options['desde']
@@ -55,11 +61,7 @@ class Command(BaseCommand):
                 with open(options['descripcion_file'], encoding='utf-8') as f:
                     descripcion = f.read().strip()
             except FileNotFoundError:
-                raise CommandError(
-                    f"No se encontró el archivo '{options['descripcion_file']}'. "
-                    f"Verifica la ruta (relativa a donde estás parado al correr el comando, "
-                    f"normalmente la carpeta del proyecto donde está manage.py)."
-                )
+                raise CommandError(f"No se encontró el archivo '{options['descripcion_file']}'.")
 
         if not descripcion:
             raise CommandError(
@@ -74,6 +76,7 @@ class Command(BaseCommand):
         for i in range(desde, desde + cantidad):
             maquina = Maquina.objects.create(
                 nombre=f'{nombre_base}-{i}',
+                categoria=categoria,
                 descripcion=descripcion,
                 precio_dia=options['precio_dia'] or None,
                 precio_semana=options['precio_semana'] or None,

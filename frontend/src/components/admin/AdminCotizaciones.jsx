@@ -134,6 +134,12 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
     })
   }, [])
 
+  // Kairos Arriendos emite las cotizaciones de arriendo de maquinaria;
+  // Ararat emite todo lo demás.
+  function calcularMarca(c) {
+    return c.reserva_maquina ? 'KAIROS' : 'ARARAT'
+  }
+
   function handleDescargar(c) {
     generarCotizacionPDF({
       folio: c.folio,
@@ -145,6 +151,7 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
       items: c.items,
       notas: c.notas,
       validezDias: c.validez_dias,
+      marca: calcularMarca(c),
     })
   }
 
@@ -178,6 +185,7 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
         items: c.items,
         notas: c.notas,
         validezDias: c.validez_dias,
+        marca: calcularMarca(c),
       })
       await enviarCorreoCotizacion(c.id, pdfBase64)
       alert(`Cotización enviada a ${emailDestino} y a facturacionapp@araratchile.com.`)

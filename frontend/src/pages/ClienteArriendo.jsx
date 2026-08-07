@@ -11,6 +11,11 @@ import terminosArriendo from '../constants/terminosArriendo'
 import { parseDescripcionBullets } from '../utils/parseDescripcionBullets'
 
 
+const CATEGORIAS_MAQUINAS = [
+  { valor: 'AUTOCARGABLE', etiqueta: 'Autocargables' },
+  { valor: 'GRUA_HORQUILLA', etiqueta: 'Grúa Horquilla' },
+]
+
 const ETIQUETA_TARIFA = {
   dia: 'Tarifa diaria',
   semana: 'Tarifa semanal (prorrateada por día)',
@@ -82,6 +87,7 @@ export default function ClienteArriendo() {
   const [misReservas, setMisReservas] = useState([])
   const [responsables, setResponsables] = useState([])
   const [modo, setModo] = useState('maquinas') // 'maquinas' | 'gas'
+  const [categoriaActiva, setCategoriaActiva] = useState(null) // null | 'AUTOCARGABLE' | 'GRUA_HORQUILLA'
   const [maquinaActiva, setMaquinaActiva] = useState(null)
   const [reservasDeEstaMaquina, setReservasDeEstaMaquina] = useState([])
   const [fechaInicio, setFechaInicio] = useState(null)
@@ -239,7 +245,11 @@ export default function ClienteArriendo() {
 
       <header className="relative z-10 w-full bg-dark text-white px-4 md:px-8 py-4 flex items-center gap-2">
         <button
-          onClick={() => (maquinaActiva ? setMaquinaActiva(null) : navigate('/cliente'))}
+          onClick={() => (
+            maquinaActiva ? setMaquinaActiva(null)
+              : categoriaActiva ? setCategoriaActiva(null)
+              : navigate('/cliente')
+          )}
           aria-label="Volver"
           className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/10 hover:bg-white/20 text-white text-3xl leading-none transition shrink-0"
         >
@@ -459,21 +469,59 @@ export default function ClienteArriendo() {
               </button>
             </div>
 
+            {!categoriaActiva ? (
+              <div>
+                <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-3">
+                  Elige una categoría
+                </h2>
+                <div className="grid grid-cols-2 gap-4">
+                  {CATEGORIAS_MAQUINAS.map((cat) => {
+                    const ejemplo = maquinas.find((m) => m.categoria === cat.valor && m.imagen)
+                    return (
+                      <button
+                        key={cat.valor}
+                        onClick={() => setCategoriaActiva(cat.valor)}
+                        className="bg-white rounded-lg shadow overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition flex flex-col"
+                      >
+                        <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                          {ejemplo ? (
+                            <img src={ejemplo.imagen} alt={cat.etiqueta} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-gray-300 text-xs">Sin imagen</span>
+                          )}
+                        </div>
+                        <div className="p-3">
+                          <h3 className="font-bold text-dark text-sm">{cat.etiqueta}</h3>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium">Máquinas disponibles</h2>
+                <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium">
+                  {CATEGORIAS_MAQUINAS.find((c) => c.valor === categoriaActiva)?.etiqueta}
+                </h2>
+                <button
+                  onClick={() => setCategoriaActiva(null)}
+                  className="text-xs text-primary font-medium hover:underline"
+                >
+                  ← Otra categoría
+                </button>
               </div>
               <div className="mb-3">
                 <AvisoDespacho />
               </div>
 
-              {maquinas.length === 0 ? (
+              {maquinas.filter((m) => m.categoria === categoriaActiva).length === 0 ? (
                 <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                  No hay máquinas disponibles todavía.
+                  No hay máquinas disponibles en esta categoría todavía.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {maquinas.map((m) => (
+                  {maquinas.filter((m) => m.categoria === categoriaActiva).map((m) => (
                     <button
                       key={m.id}
                       onClick={() => abrirMaquina(m)}
@@ -522,6 +570,7 @@ export default function ClienteArriendo() {
                 </div>
               )}
             </div>
+            )}
 
             <div>
               <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-3">Tus reservas</h2>

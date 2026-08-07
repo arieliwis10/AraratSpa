@@ -171,7 +171,13 @@ class SolicitudMaterial(models.Model):
 
 
 class Maquina(models.Model):
+    class Categoria(models.TextChoices):
+        AUTOCARGABLE = 'AUTOCARGABLE', 'Autocargable'
+        GRUA_HORQUILLA = 'GRUA_HORQUILLA', 'Grúa Horquilla'
+
+    categoria = models.CharField(max_length=20, choices=Categoria.choices, blank=True, default='')
     nombre = models.CharField(max_length=100)
+    
     descripcion = models.TextField(blank=True)
     imagen = models.ImageField(upload_to='maquinas/', blank=True, null=True)
 

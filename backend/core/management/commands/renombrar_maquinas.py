@@ -45,4 +45,4 @@ class Command(BaseCommand):
             f'"{prefijo_actual}-N" -> "{prefijo_nuevo}-N"'
         ))
 
-# manage.py renombrar_maquinas --nombre-actual G2.5T_10 --nombre-nuevo Grua Horquilla G2.5T_10
+# manage.py renombrar_maquinas --nombre-actual G2.5T_10 --nombre-nuevo Grua_Horquilla_G2.5T_10

@@ -208,8 +208,12 @@ export default function CotizacionModal({
         setFolioAsignado(folio)
       }
 
+      // Kairos Arriendos emite las cotizaciones de arriendo de maquinaria;
+      // Ararat emite todo lo demás (Maestranza, Ferretería, Gas, sueltas).
+      const marca = tieneReservaVinculada ? 'KAIROS' : 'ARARAT'
+
       generarCotizacionPDF({
-        folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo, items, notas, validezDias,
+        folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo, items, notas, validezDias, marca,
       })
     } catch (err) {
       console.error('No se pudo guardar la cotización', err)

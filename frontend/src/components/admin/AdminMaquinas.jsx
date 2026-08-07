@@ -54,7 +54,7 @@ function ProductosMaquinas() {
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState({
-    nombre: '', descripcion: '', precio_hora: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true,
+    nombre: '', categoria: 'AUTOCARGABLE', descripcion: '', precio_hora: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true,
   })
   const [imagen, setImagen] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -76,7 +76,7 @@ function ProductosMaquinas() {
 
   function abrirNuevo() {
     setEditando(null)
-    setForm({ nombre: '', descripcion: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true })
+    setForm({ nombre: '', categoria: 'AUTOCARGABLE', descripcion: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true })
     setImagen(null)
     setPreview(null)
     setMostrarForm(true)
@@ -86,6 +86,7 @@ function ProductosMaquinas() {
     setEditando(m)
     setForm({
       nombre: m.nombre,
+      categoria: m.categoria || 'AUTOCARGABLE',
       descripcion: m.descripcion,
       precio_dia: m.precio_dia || '',
       precio_semana: m.precio_semana || '',
@@ -109,6 +110,7 @@ function ProductosMaquinas() {
     e.preventDefault()
     const formData = new FormData()
     formData.append('nombre', form.nombre)
+    formData.append('categoria', form.categoria)
     formData.append('descripcion', form.descripcion)
     if (form.precio_dia) formData.append('precio_dia', form.precio_dia)
     if (form.precio_semana) formData.append('precio_semana', form.precio_semana)
@@ -150,6 +152,17 @@ function ProductosMaquinas() {
             className="w-full border rounded p-2"
             required
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-dark">Categoría</label>
+          <select
+            value={form.categoria}
+            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            className="w-full border rounded p-2"
+          >
+            <option value="AUTOCARGABLE">Autocargable</option>
+            <option value="GRUA_HORQUILLA">Grúa Horquilla</option>
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1 text-dark">Descripción</label>
@@ -224,6 +237,11 @@ function ProductosMaquinas() {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-bold text-dark">{m.nombre}</h3>
+                  {m.categoria && (
+                    <span className="inline-block text-[10px] font-medium text-primary bg-primary/10 rounded px-1.5 py-0.5 mb-1">
+                      {m.categoria === 'AUTOCARGABLE' ? 'Autocargable' : 'Grúa Horquilla'}
+                    </span>
+                  )}
                   {(() => {
                     const bullets = parseDescripcionBullets(m.descripcion)
                     return bullets.length > 1 ? (
