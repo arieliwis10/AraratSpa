@@ -22,3 +22,13 @@ export const getPedidosGas = () => api.get('pedidos-gas/')
 export const solicitarGas = (data) => api.post('pedidos-gas/solicitar/', data)
 export const marcarPedidoGasRevisado = (id) => api.patch(`pedidos-gas/${id}/marcar_revisado/`)
 export const marcarReservasVistas = () => api.post('reservas-maquinas/marcar_vistas/')
+export const getCategoriasMaquinas = () => api.get('categorias-maquinas/')
+export const crearCategoriaMaquina = (formData) =>
+  api.post('categorias-maquinas/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+export const actualizarCategoriaMaquina = (id, formData) =>
+  api.patch(`categorias-maquinas/${id}/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+export const eliminarCategoriaMaquina = (id) => api.delete(`categorias-maquinas/${id}/`)
