@@ -12,10 +12,26 @@ param(
     [string]$Mensaje = "build frontend"
 )
 
-# Si CUALQUIER comando falla (ej. el build tira un error de sintaxis),
-# el script se detiene aqui mismo y NO sigue con commit/push.
-# Esto evita subir a producción un frontend a medio compilar o roto.
+# NOTA IMPORTANTE sobre $ErrorActionPreference:
+# Esto SOLO detiene el script ante errores de cmdlets de PowerShell.
+# NO detiene el script si un programa externo (npm, git, vite) termina
+# con codigo de salida distinto de 0 - eso hay que chequearlo a mano
+# con $LASTEXITCODE despues de cada comando externo. Por eso este script
+# lo hace explicitamente en cada paso, en vez de confiar solo en esto.
 $ErrorActionPreference = "Stop"
+
+# Pequenia funcion para no repetir la misma verificacion varias veces:
+# corta el script con mensaje claro si el ultimo comando externo fallo.
+function Detener-SiFallo {
+    param([string]$Paso)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "DEPLOY ABORTADO - fallo: $Paso (codigo de salida $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "No se subio nada a git. Revisa el error de arriba, corregilo, y volve a correr .\deploy.ps1" -ForegroundColor Yellow
+        Set-Location $PSScriptRoot
+        exit 1
+    }
+}
 
 Write-Host ""
 Write-Host "== 1/4 Compilando frontend ==" -ForegroundColor Cyan
@@ -23,34 +39,57 @@ Write-Host "== 1/4 Compilando frontend ==" -ForegroundColor Cyan
 Set-Location frontend
 # Corre el build: regenera la carpeta dist/ con los archivos nuevos
 # (JS/CSS con hash nuevo en el nombre, ej. index-BRs3r-2F.js).
-# Este hash nuevo es justamente lo que ayuda a que el navegador
-# no siga sirviendo el bundle viejo desde el Service Worker/caché.
 npm run build
+Detener-SiFallo "npm run build"
+
+# Chequeo extra, ademas del codigo de salida: confirmar que el build
+# realmente genero un index.html con contenido. Si por algun motivo
+# vite termino con codigo 0 pero el archivo quedo vacio o no se genero,
+# esto lo agarra igual antes de subir nada roto.
+$indexPath = "dist\index.html"
+if (-not (Test-Path $indexPath) -or (Get-Item $indexPath).Length -eq 0) {
+    Write-Host ""
+    Write-Host "DEPLOY ABORTADO - dist\index.html no existe o esta vacio despues del build." -ForegroundColor Red
+    Write-Host "El build no genero lo esperado. No se subio nada a git." -ForegroundColor Yellow
+    Set-Location $PSScriptRoot
+    exit 1
+}
+
+Write-Host "Build OK - dist\index.html generado correctamente." -ForegroundColor Green
+
 # Vuelve a la raiz del repo para que los siguientes comandos de git
 # operen sobre todo el proyecto, no solo sobre frontend/.
 Set-Location ..
 
 Write-Host ""
 Write-Host "== 2/4 Agregando cambios a git ==" -ForegroundColor Cyan
-# Agrega TODOS los cambios pendientes del repo (incluye dist/ nuevo,
-# archivos borrados del build viejo, y cualquier otro cambio de código
-# que tengas, ej. backend). El .gitignore ya protege venv/, .env,
-# node_modules/, etc., asi que no hay riesgo de subir algo sensible.
 git add .
+Detener-SiFallo "git add ."
+
+# Si no hay ningun cambio real para commitear (por ejemplo, corriste el
+# build de nuevo sin haber tocado codigo), 'git commit' fallaria con un
+# error confuso. Lo detectamos antes y avisamos con un mensaje claro,
+# en vez de que se vea como si algo se hubiera roto.
+$cambiosPendientes = git diff --cached --name-only
+if (-not $cambiosPendientes) {
+    Write-Host ""
+    Write-Host "No hay cambios nuevos para subir (todo ya estaba al dia)." -ForegroundColor Yellow
+    Write-Host "Nada que commitear ni pushear. Deploy terminado sin cambios." -ForegroundColor Yellow
+    exit 0
+}
 
 Write-Host ""
 Write-Host "== 3/4 Creando commit ==" -ForegroundColor Cyan
-# Crea el commit con el mensaje que pasaste (o el default).
 git commit -m "$Mensaje"
+Detener-SiFallo "git commit"
 
 Write-Host ""
 Write-Host "== 4/4 Subiendo a GitHub ==" -ForegroundColor Cyan
-# Sube el commit al repo remoto (GitHub). Desde aca, cPanel puede
-# hacer "Update from Remote" para traer estos cambios.
 git push
+Detener-SiFallo "git push"
 
 Write-Host ""
 Write-Host "Listo. Ahora entra a cPanel -> Git Version Control -> Update from Remote -> Deploy." -ForegroundColor Green
 # IMPORTANTE: este script llega hasta el push. El paso de cPanel
-# (Update from Remote + Deploy HEAD Commit) sigue siendo manual —
+# (Update from Remote + Deploy HEAD Commit) sigue siendo manual -
 # este script no lo dispara automaticamente.
