@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getMaquinas, getReservas, crearReserva, cancelarReserva, cotizarMaquina, marcarReservasVistas } from '../api/arriendo'
+import { getMaquinas, getReservas, crearReserva, cancelarReserva, cotizarMaquina, marcarReservasVistas, getCategoriasMaquinas } from '../api/arriendo'
 import { getResponsables } from '../api/usuarios'
 import CalendarioDisponibilidad from '../components/CalendarioDisponibilidad'
 import CarritoGas from '../components/CarritoGas'
@@ -10,11 +10,6 @@ import fondoPanel from '../assets/fondo-panel.jpg'
 import terminosArriendo from '../constants/terminosArriendo'
 import { parseDescripcionBullets } from '../utils/parseDescripcionBullets'
 
-
-const CATEGORIAS_MAQUINAS = [
-  { valor: 'AUTOCARGABLE', etiqueta: 'Autocargables' },
-  { valor: 'GRUA_HORQUILLA', etiqueta: 'Grúa Horquilla' },
-]
 
 const ETIQUETA_TARIFA = {
   dia: 'Tarifa diaria',
@@ -87,7 +82,8 @@ export default function ClienteArriendo() {
   const [misReservas, setMisReservas] = useState([])
   const [responsables, setResponsables] = useState([])
   const [modo, setModo] = useState('maquinas') // 'maquinas' | 'gas'
-  const [categoriaActiva, setCategoriaActiva] = useState(null) // null | 'AUTOCARGABLE' | 'GRUA_HORQUILLA'
+  const [categoriaActiva, setCategoriaActiva] = useState(null) // null | id de CategoriaMaquina
+  const [categorias, setCategorias] = useState([])
   const [maquinaActiva, setMaquinaActiva] = useState(null)
   const [reservasDeEstaMaquina, setReservasDeEstaMaquina] = useState([])
   const [fechaInicio, setFechaInicio] = useState(null)
@@ -108,6 +104,7 @@ export default function ClienteArriendo() {
   useEffect(() => {
     cargarDatos()
     getResponsables().then((res) => setResponsables(res.data))
+    getCategoriasMaquinas().then((res) => setCategorias(res.data.filter((c) => c.activa)))
     marcarReservasVistas()
   }, [])
 
@@ -474,35 +471,42 @@ export default function ClienteArriendo() {
                 <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium mb-3">
                   Elige una categoría
                 </h2>
-                <div className="grid grid-cols-2 gap-4">
-                  {CATEGORIAS_MAQUINAS.map((cat) => {
-                    const ejemplo = maquinas.find((m) => m.categoria === cat.valor && m.imagen)
-                    return (
-                      <button
-                        key={cat.valor}
-                        onClick={() => setCategoriaActiva(cat.valor)}
-                        className="bg-white rounded-lg shadow overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition flex flex-col"
-                      >
-                        <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
-                          {ejemplo ? (
-                            <img src={ejemplo.imagen} alt={cat.etiqueta} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-gray-300 text-xs">Sin imagen</span>
-                          )}
-                        </div>
-                        <div className="p-3">
-                          <h3 className="font-bold text-dark text-sm">{cat.etiqueta}</h3>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                {categorias.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                    No hay categorías de máquinas disponibles todavía.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {categorias.map((cat) => {
+                      const ejemplo = maquinas.find((m) => m.categoria_fk === cat.id && m.imagen)
+                      const imagenMostrada = cat.imagen || ejemplo?.imagen
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => setCategoriaActiva(cat.id)}
+                          className="bg-white rounded-lg shadow overflow-hidden text-left hover:shadow-md hover:-translate-y-0.5 transition flex flex-col"
+                        >
+                          <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center">
+                            {imagenMostrada ? (
+                              <img src={imagenMostrada} alt={cat.nombre} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-gray-300 text-xs">Sin imagen</span>
+                            )}
+                          </div>
+                          <div className="p-3">
+                            <h3 className="font-bold text-dark text-sm">{cat.nombre}</h3>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <h2 className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-dark font-medium">
-                  {CATEGORIAS_MAQUINAS.find((c) => c.valor === categoriaActiva)?.etiqueta}
+                  {categorias.find((c) => c.id === categoriaActiva)?.nombre}
                 </h2>
                 <button
                   onClick={() => setCategoriaActiva(null)}
@@ -515,13 +519,13 @@ export default function ClienteArriendo() {
                 <AvisoDespacho />
               </div>
 
-              {maquinas.filter((m) => m.categoria === categoriaActiva).length === 0 ? (
+              {maquinas.filter((m) => m.categoria_fk === categoriaActiva).length === 0 ? (
                 <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                   No hay máquinas disponibles en esta categoría todavía.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {maquinas.filter((m) => m.categoria === categoriaActiva).map((m) => (
+                  {maquinas.filter((m) => m.categoria_fk === categoriaActiva).map((m) => (
                     <button
                       key={m.id}
                       onClick={() => abrirMaquina(m)}

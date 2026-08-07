@@ -1,8 +1,10 @@
 from rest_framework import serializers
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
-    ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
-    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda, PushSubscription
+    ComentarioTrabajo, SolicitudMaterial, Maquina, CategoriaMaquina, ReservaMaquina,
+    ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
+    ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas,
+    Cotizacion, TareaAgenda, PushSubscription
 )
 
 
@@ -174,13 +176,25 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
         return data
 
 
+class CategoriaMaquinaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategoriaMaquina
+        fields = ['id', 'nombre', 'imagen', 'activa', 'orden']
+
+
 class MaquinaSerializer(serializers.ModelSerializer):
-    categoria_display = serializers.CharField(source='get_categoria_display', read_only=True)
+    categoria_nombre = serializers.CharField(source='categoria_fk.nombre', read_only=True, default=None)
+    categoria_imagen = serializers.ImageField(source='categoria_fk.imagen', read_only=True, default=None)
+    categoria_activa = serializers.BooleanField(source='categoria_fk.activa', read_only=True, default=None)
 
     class Meta:
         model = Maquina
-        fields = ['id', 'nombre', 'categoria', 'categoria_display', 'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana', 'precio_mes', 'precio_despacho', 'activo']
-
+        fields = [
+            'id', 'nombre',
+            'categoria_fk', 'categoria_nombre', 'categoria_imagen', 'categoria_activa',
+            'descripcion', 'imagen', 'precio_hora', 'precio_dia', 'precio_semana',
+            'precio_mes', 'precio_despacho', 'activo',
+        ]
 
 class ReservaMaquinaSerializer(serializers.ModelSerializer):
     maquina_nombre = serializers.CharField(source='maquina.nombre', read_only=True)

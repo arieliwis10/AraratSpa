@@ -60,5 +60,5 @@ class Command(BaseCommand):
 # manage.py actualizar_precios_maquinas --nombre-base Autocargable_A4B_20 --precio-dia 45000
 # manage.py actualizar_precios_maquinas --nombre-base Autocargable_A4B_20 --precio-dia 45000 --precio-semana 180000 --precio-mes 600000
 
-# manage.py actualizar_precios_maquinas --nombre-base Grua Horquilla G2.5T_10 --precio-dia 60000
-# manage.py actualizar_precios_maquinas --nombre-base Grua Horquilla G2.5T_10 --precio-dia 60000 --precio-semana 220000 --precio-mes 800000
+# manage.py actualizar_precios_maquinas --nombre-base Grua_Horquilla_G2.5T_15 --precio-dia 60000
+# manage.py actualizar_precios_maquinas --nombre-base Grua_Horquilla_G2.5T_15 --precio-dia 60000 --precio-semana 220000 --precio-mes 800000

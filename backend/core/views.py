@@ -15,7 +15,7 @@ from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
     ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda,
-    PushSubscription
+    PushSubscription, CategoriaMaquina
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
@@ -23,7 +23,7 @@ from .serializers import (
     SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
     ProductoFerreteriaSerializer, PedidoFerreteriaSerializer, ItemPedidoFerreteriaSerializer,
     ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer,
-    CotizacionSerializer, TareaAgendaSerializer
+    CotizacionSerializer, TareaAgendaSerializer, CategoriaMaquinaSerializer
 )
 from .push_utils import enviar_push
 
@@ -1348,6 +1348,17 @@ class MaquinaViewSet(viewsets.ModelViewSet):
             )
 
         return Response(resultado)
+
+class CategoriaMaquinaViewSet(viewsets.ModelViewSet):
+    queryset = CategoriaMaquina.objects.all()
+    serializer_class = CategoriaMaquinaSerializer
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
 
 
 class ReservaMaquinaViewSet(viewsets.ModelViewSet):

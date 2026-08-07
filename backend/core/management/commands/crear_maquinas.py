@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand, CommandError
-from core.models import Maquina
+from core.models import Maquina, CategoriaMaquina
 
 
 class Command(BaseCommand):
@@ -21,9 +21,10 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--categoria', type=str, required=True,
-            choices=['AUTOCARGABLE', 'GRUA_HORQUILLA'],
-            help='Categoría de la máquina, para que el cliente pueda filtrar '
-                 'por tipo en la app.'
+            help='Nombre de la categoría, tal como aparece en el panel Admin → '
+                 'Máquinas → Categorías (ej: "Autocargable"). Si no existe '
+                 'todavía, se crea automáticamente. Guion bajo en vez de '
+                 'espacio si el nombre tiene espacios: Grua_Horquilla.'
         )
         parser.add_argument('--cantidad', type=int, required=True)
         parser.add_argument(
@@ -51,10 +52,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         nombre_base = options['nombre_base'].replace('_', ' ')
-        categoria = options['categoria']
+        categoria_nombre = options['categoria'].replace('_', ' ')
         cantidad = options['cantidad']
         descripcion = options['descripcion']
         desde = options['desde']
+
+        categoria, creada = CategoriaMaquina.objects.get_or_create(nombre=categoria_nombre)
+        if creada:
+            self.stdout.write(self.style.SUCCESS(f'Categoría nueva creada: "{categoria_nombre}"'))
 
         if options['descripcion_file']:
             try:
@@ -76,7 +81,7 @@ class Command(BaseCommand):
         for i in range(desde, desde + cantidad):
             maquina = Maquina.objects.create(
                 nombre=f'{nombre_base}-{i}',
-                categoria=categoria,
+                categoria_fk=categoria,
                 descripcion=descripcion,
                 precio_dia=options['precio_dia'] or None,
                 precio_semana=options['precio_semana'] or None,
@@ -87,6 +92,17 @@ class Command(BaseCommand):
             creadas.append(maquina)
 
         self.stdout.write(self.style.SUCCESS(
-            f'Se crearon {len(creadas)} máquinas: '
+            f'Se crearon {len(creadas)} máquinas en la categoría "{categoria_nombre}": '
             + ', '.join(m.nombre for m in creadas)
         ))
+
+
+# ---------------------------------------------------------------------------
+# EJEMPLOS DE USO
+#
+# Autocargables:
+# manage.py crear_maquinas --nombre-base Autocargable_A4B_20 --categoria Autocargable --cantidad 20 --descripcion-file scripts/descripciones/descripcion_autocargable_a4b20.txt --precio-dia 1000 --precio-semana 3000 --precio-mes 5000
+#
+# Grúas horquilla:
+# manage.py crear_maquinas --nombre-base Grua_Horquilla_G2.5T_15 --categoria Grua_Horquilla --desde 80 --cantidad 16 --descripcion-file scripts/descripciones/descripcion_grua_g25t10.txt --precio-dia 45000 --precio-semana 250000 --precio-mes 800000
+# ---------------------------------------------------------------------------

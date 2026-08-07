@@ -4,7 +4,7 @@ from .views import (
     UsuarioViewSet, EmpresaViewSet, ResponsableViewSet, TrabajoMaestranzaViewSet,
     MaquinaViewSet, ReservaMaquinaViewSet, SolicitudMaterialViewSet,
     ProductoFerreteriaViewSet, PedidoFerreteriaViewSet, ProductoFlexibleViewSet, ProductoGasViewSet, PedidoGasViewSet,
-    ResumenPendientesView, ResumenClienteView, CotizacionViewSet, TareaAgendaViewSet, guardar_push_subscription
+    ResumenPendientesView, ResumenClienteView, CotizacionViewSet, TareaAgendaViewSet, guardar_push_subscription, CategoriaMaquinaViewSet
 )
 
 router = DefaultRouter()
@@ -22,6 +22,7 @@ router.register(r'productos-gas', ProductoGasViewSet, basename='producto-gas')
 router.register(r'pedidos-gas', PedidoGasViewSet, basename='pedido-gas')
 router.register(r'cotizaciones', CotizacionViewSet, basename='cotizacion')
 router.register(r'tareas-agenda', TareaAgendaViewSet, basename='tarea-agenda')
+router.register(r'categorias-maquinas', CategoriaMaquinaViewSet)
 
 
 urlpatterns = router.urls + [

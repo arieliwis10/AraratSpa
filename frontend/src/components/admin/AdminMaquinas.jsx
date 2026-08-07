@@ -4,6 +4,7 @@ import {
   getReservas, cambiarEstadoReserva,
   getProductosGas, crearProductoGas, actualizarProductoGas, eliminarProductoGas,
   getStockBajoGas, getPedidosGas, marcarPedidoGasRevisado,
+  getCategoriasMaquinas, crearCategoriaMaquina, actualizarCategoriaMaquina, eliminarCategoriaMaquina,
 } from '../../api/arriendo'
 import { getUsuarios } from '../../api/usuarios'
 import BadgeEstado from '../BadgeEstado'
@@ -49,13 +50,199 @@ function BadgeContador({ count }) {
   )
 }
 
+function CategoriasMaquinas({ onCategoriasChange }) {
+  const [categorias, setCategorias] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [mostrarForm, setMostrarForm] = useState(false)
+  const [editando, setEditando] = useState(null)
+  const [nombre, setNombre] = useState('')
+  const [imagen, setImagen] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    cargar()
+  }, [])
+
+  async function cargar() {
+    setCargando(true)
+    try {
+      const res = await getCategoriasMaquinas()
+      setCategorias(res.data)
+      onCategoriasChange?.(res.data)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  function abrirNueva() {
+    setEditando(null)
+    setNombre('')
+    setImagen(null)
+    setPreview(null)
+    setMostrarForm(true)
+  }
+
+  function abrirEditar(cat) {
+    setEditando(cat)
+    setNombre(cat.nombre)
+    setImagen(null)
+    setPreview(cat.imagen || null)
+    setMostrarForm(true)
+  }
+
+  function handleImagen(e) {
+    const file = e.target.files[0]
+    if (file) {
+      setImagen(file)
+      setPreview(URL.createObjectURL(file))
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!nombre.trim()) {
+      alert('Escribe el nombre de la categoría')
+      return
+    }
+    const formData = new FormData()
+    formData.append('nombre', nombre.trim())
+    if (imagen) formData.append('imagen', imagen)
+    if (!editando) formData.append('activa', true)
+
+    setGuardando(true)
+    try {
+      if (editando) {
+        await actualizarCategoriaMaquina(editando.id, formData)
+      } else {
+        await crearCategoriaMaquina(formData)
+      }
+      setMostrarForm(false)
+      cargar()
+    } catch (err) {
+      alert('Error al guardar la categoría. Puede que ya exista una con ese nombre.')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function toggleActiva(cat) {
+    const formData = new FormData()
+    formData.append('activa', !cat.activa)
+    try {
+      await actualizarCategoriaMaquina(cat.id, formData)
+      cargar()
+    } catch (err) {
+      alert('Error al actualizar la categoría')
+    }
+  }
+
+  async function handleEliminar(cat) {
+    if (!confirm(`¿Eliminar la categoría "${cat.nombre}"? Las máquinas que la tengan asignada quedarán sin categoría.`)) return
+    try {
+      await eliminarCategoriaMaquina(cat.id)
+      cargar()
+    } catch (err) {
+      alert('Error al eliminar la categoría')
+    }
+  }
+
+  if (mostrarForm) {
+    return (
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md space-y-4 border-t-4 border-primary max-w-md">
+        <h2 className="text-lg font-bold text-dark border-l-4 border-primary pl-3">
+          {editando ? 'Editar categoría' : 'Nueva categoría'}
+        </h2>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-dark">Nombre</label>
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Ej: Autocargables"
+            className="w-full border rounded p-2"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-dark">Imagen representativa</label>
+          <input type="file" accept="image/*" onChange={handleImagen} className="w-full border rounded p-2 bg-white" />
+          {preview && <img src={preview} alt="preview" className="mt-2 w-32 h-24 object-cover rounded border" />}
+          <p className="text-xs text-gray-400 mt-1">
+            Se muestra en el botón de la categoría cuando el cliente elige qué tipo de máquina arrendar.
+          </p>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button type="submit" disabled={guardando} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium disabled:opacity-60">
+            {guardando ? 'Guardando...' : 'Guardar'}
+          </button>
+          <button type="button" onClick={() => setMostrarForm(false)} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <button onClick={abrirNueva} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium">
+          + Nueva categoría
+        </button>
+      </div>
+      {cargando ? (
+        <p className="text-dark">Cargando...</p>
+      ) : categorias.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+          Todavía no hay categorías. Creá la primera para poder asignarla a las máquinas.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {categorias.map((cat) => (
+            <div key={cat.id} className="bg-white rounded-lg shadow overflow-hidden flex">
+              <div className="w-24 h-24 shrink-0 bg-gray-100 flex items-center justify-center">
+                {cat.imagen ? (
+                  <img src={cat.imagen} alt={cat.nombre} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-gray-300 text-[10px] text-center px-1">Sin imagen</span>
+                )}
+              </div>
+              <div className="p-3 flex flex-col gap-1 flex-1">
+                <div className="flex justify-between items-start gap-2">
+                  <h3 className="font-bold text-dark text-sm">{cat.nombre}</h3>
+                  <button
+                    onClick={() => toggleActiva(cat)}
+                    className={`shrink-0 text-[10px] px-2 py-0.5 rounded font-medium ${
+                      cat.activa ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'
+                    }`}
+                  >
+                    {cat.activa ? 'Visible' : 'Oculta'}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">
+                  {cat.activa ? 'Los clientes la ven en el catálogo' : 'Los clientes NO la ven — pero las máquinas siguen ahí'}
+                </p>
+                <div className="flex gap-3 mt-auto pt-2">
+                  <button onClick={() => abrirEditar(cat)} className="text-primary text-xs font-medium hover:underline">Editar</button>
+                  <button onClick={() => handleEliminar(cat)} className="text-danger text-xs font-medium hover:underline">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProductosMaquinas() {
   const [maquinas, setMaquinas] = useState([])
+  const [categorias, setCategorias] = useState([])
   const [filtroCategoria, setFiltroCategoria] = useState('TODAS')
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState({
-    nombre: '', categoria: 'AUTOCARGABLE', descripcion: '', precio_hora: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true,
+    nombre: '', categoria_fk: '', descripcion: '', precio_hora: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true,
   })
   const [imagen, setImagen] = useState(null)
   const [preview, setPreview] = useState(null)
@@ -63,6 +250,7 @@ function ProductosMaquinas() {
 
   useEffect(() => {
     cargarMaquinas()
+    getCategoriasMaquinas().then((res) => setCategorias(res.data))
   }, [])
 
   async function cargarMaquinas() {
@@ -77,7 +265,7 @@ function ProductosMaquinas() {
 
   function abrirNuevo() {
     setEditando(null)
-    setForm({ nombre: '', categoria: 'AUTOCARGABLE', descripcion: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true })
+    setForm({ nombre: '', categoria_fk: categorias[0]?.id || '', descripcion: '', precio_dia: '', precio_semana: '', precio_mes: '', activo: true })
     setImagen(null)
     setPreview(null)
     setMostrarForm(true)
@@ -87,7 +275,7 @@ function ProductosMaquinas() {
     setEditando(m)
     setForm({
       nombre: m.nombre,
-      categoria: m.categoria || 'AUTOCARGABLE',
+      categoria_fk: m.categoria_fk || '',
       descripcion: m.descripcion,
       precio_dia: m.precio_dia || '',
       precio_semana: m.precio_semana || '',
@@ -111,7 +299,7 @@ function ProductosMaquinas() {
     e.preventDefault()
     const formData = new FormData()
     formData.append('nombre', form.nombre)
-    formData.append('categoria', form.categoria)
+    if (form.categoria_fk) formData.append('categoria_fk', form.categoria_fk)
     formData.append('descripcion', form.descripcion)
     if (form.precio_dia) formData.append('precio_dia', form.precio_dia)
     if (form.precio_semana) formData.append('precio_semana', form.precio_semana)
@@ -157,13 +345,20 @@ function ProductosMaquinas() {
         <div>
           <label className="block text-sm font-medium mb-1 text-dark">Categoría</label>
           <select
-            value={form.categoria}
-            onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            value={form.categoria_fk}
+            onChange={(e) => setForm({ ...form, categoria_fk: e.target.value })}
             className="w-full border rounded p-2"
           >
-            <option value="AUTOCARGABLE">Autocargable</option>
-            <option value="GRUA_HORQUILLA">Grúa Horquilla</option>
+            <option value="">Sin categoría</option>
+            {categorias.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+            ))}
           </select>
+          {categorias.length === 0 && (
+            <p className="text-xs text-danger mt-1">
+              No hay categorías creadas todavía — andá a la pestaña "Categorías" y creá al menos una.
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium mb-1 text-dark">Descripción</label>
@@ -222,7 +417,7 @@ function ProductosMaquinas() {
   }
 
   const maquinasFiltradas = maquinas.filter((m) =>
-    filtroCategoria === 'TODAS' ? true : m.categoria === filtroCategoria
+    filtroCategoria === 'TODAS' ? true : m.categoria_fk === filtroCategoria
   )
 
   return (
@@ -237,22 +432,17 @@ function ProductosMaquinas() {
           >
             Todas
           </button>
-          <button
-            onClick={() => setFiltroCategoria('AUTOCARGABLE')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${
-              filtroCategoria === 'AUTOCARGABLE' ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Autocargables
-          </button>
-          <button
-            onClick={() => setFiltroCategoria('GRUA_HORQUILLA')}
-            className={`px-3 py-1.5 rounded text-sm font-medium ${
-              filtroCategoria === 'GRUA_HORQUILLA' ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Grúa Horquilla
-          </button>
+          {categorias.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setFiltroCategoria(cat.id)}
+              className={`px-3 py-1.5 rounded text-sm font-medium ${
+                filtroCategoria === cat.id ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {cat.nombre}
+            </button>
+          ))}
         </div>
         <button onClick={abrirNuevo} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium whitespace-nowrap">
           + Nueva máquina
@@ -280,9 +470,9 @@ function ProductosMaquinas() {
               </div>
               <div className="p-3 flex flex-col gap-1 flex-1">
                 <h3 className="font-bold text-dark text-sm leading-tight">{m.nombre}</h3>
-                {m.categoria && (
+                {m.categoria_nombre && (
                   <span className="inline-block w-fit text-[10px] font-medium text-primary bg-primary/10 rounded px-1.5 py-0.5">
-                    {m.categoria === 'AUTOCARGABLE' ? 'Autocargable' : 'Grúa Horquilla'}
+                    {m.categoria_nombre}
                   </span>
                 )}
                 {(() => {
@@ -458,6 +648,12 @@ function VistaMaquinas({ pendientesCount, onPendientesChange }) {
           Productos
         </button>
         <button
+          onClick={() => setSubTab('categorias')}
+          className={`px-4 py-1.5 rounded text-sm font-medium ${subTab === 'categorias' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
+        >
+          Categorías
+        </button>
+        <button
           onClick={() => setSubTab('pedidos')}
           className={`relative px-4 py-1.5 rounded text-sm font-medium ${subTab === 'pedidos' ? 'bg-primary text-white' : 'text-dark hover:bg-gray-50'}`}
         >
@@ -466,7 +662,9 @@ function VistaMaquinas({ pendientesCount, onPendientesChange }) {
         </button>
       </div>
 
-      {subTab === 'productos' ? <ProductosMaquinas /> : <PedidosMaquinas onPendientesChange={onPendientesChange} />}
+      {subTab === 'productos' ? <ProductosMaquinas />
+        : subTab === 'categorias' ? <CategoriasMaquinas />
+        : <PedidosMaquinas onPendientesChange={onPendientesChange} />}
     </div>
   )
 }

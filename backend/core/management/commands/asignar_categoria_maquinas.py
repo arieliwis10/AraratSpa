@@ -1,12 +1,12 @@
 from django.core.management.base import BaseCommand, CommandError
-from core.models import Maquina
+from core.models import Maquina, CategoriaMaquina
 
 
 class Command(BaseCommand):
     help = (
-        'Asigna una categoría a todas las máquinas cuyo nombre empieza con el '
-        'prefijo indicado, sin crear ni eliminar nada. Pensado para categorizar '
-        'lotes que ya existían antes de agregar el campo categoría al sistema.'
+        'Asigna una categoría (dinámica, se crea si no existe) a todas las '
+        'máquinas cuyo nombre empieza con el prefijo indicado, sin crear ni '
+        'eliminar nada.'
     )
 
     def add_arguments(self, parser):
@@ -17,12 +17,17 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--categoria', type=str, required=True,
-            choices=['AUTOCARGABLE', 'GRUA_HORQUILLA'],
+            help='Nombre de la categoría (guion bajo en vez de espacio). Si no '
+                 'existe todavía, se crea automáticamente.'
         )
 
     def handle(self, *args, **options):
         prefijo = options['nombre_base'].replace('_', ' ')
-        categoria = options['categoria']
+        categoria_nombre = options['categoria'].replace('_', ' ')
+
+        categoria, creada = CategoriaMaquina.objects.get_or_create(nombre=categoria_nombre)
+        if creada:
+            self.stdout.write(self.style.SUCCESS(f'Categoría nueva creada: "{categoria_nombre}"'))
 
         qs = Maquina.objects.filter(nombre__startswith=f'{prefijo}-')
 
@@ -32,13 +37,19 @@ class Command(BaseCommand):
                 f'Revisa que --nombre-base sea igual al nombre real guardado.'
             )
 
-        actualizadas = qs.update(categoria=categoria)
+        actualizadas = qs.update(categoria_fk=categoria)
         self.stdout.write(self.style.SUCCESS(
-            f'Se asignó la categoría "{categoria}" a {actualizadas} máquinas '
+            f'Se asignó la categoría "{categoria_nombre}" a {actualizadas} máquinas '
             f'que empiezan con "{prefijo}-".'
         ))
 
 
-# manage.py asignar_categoria_maquinas --nombre-base Autocargable_A4B_20 --categoria AUTOCARGABLE
-
-# manage.py asignar_categoria_maquinas --nombre-base G2.5T_10 --categoria GRUA_HORQUILLA
+# ---------------------------------------------------------------------------
+# EJEMPLOS DE USO
+#
+# Autocargables:
+# manage.py asignar_categoria_maquinas --nombre-base Autocargable_A4B_20 --categoria Autocargable
+#
+# Grúas horquilla:
+# manage.py asignar_categoria_maquinas --nombre-base Grua_Horquilla_G2.5T_15 --categoria Grua_Horquilla
+# ---------------------------------------------------------------------------

@@ -183,11 +183,6 @@ class CategoriaMaquina(models.Model):
         return self.nombre
 
 class Maquina(models.Model):
-    class Categoria(models.TextChoices):
-        AUTOCARGABLE = 'AUTOCARGABLE', 'Autocargable'
-        GRUA_HORQUILLA = 'GRUA_HORQUILLA', 'Grúa Horquilla'
-
-    categoria = models.CharField(max_length=20, choices=Categoria.choices, blank=True, default='')
     categoria_fk = models.ForeignKey(
         'CategoriaMaquina', on_delete=models.SET_NULL, null=True, blank=True, related_name='maquinas'
     )
