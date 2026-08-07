@@ -79,7 +79,7 @@ async function construirDocCotizacion({
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
 
-  doc.setFillColor(15, 15, 15)
+  doc.setFillColor(0, 0, 0)
   doc.rect(0, 0, pageWidth, 28, 'F')
   doc.setFillColor(190, 30, 30)
   doc.rect(0, 28, pageWidth, 2, 'F')
@@ -156,7 +156,7 @@ async function construirDocCotizacion({
     body: filas,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 2.5 },
-    headStyles: { fillColor: [15, 15, 15], textColor: 255 },
+    headStyles: { fillColor: [0, 0, 0], textColor: 255 },
     columnStyles: {
       0: { cellWidth: 12 },
       2: { cellWidth: 16 },
