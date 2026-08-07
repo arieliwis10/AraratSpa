@@ -51,6 +51,7 @@ function BadgeContador({ count }) {
 
 function ProductosMaquinas() {
   const [maquinas, setMaquinas] = useState([])
+  const [filtroCategoria, setFiltroCategoria] = useState('TODAS')
   const [mostrarForm, setMostrarForm] = useState(false)
   const [editando, setEditando] = useState(null)
   const [form, setForm] = useState({
@@ -220,53 +221,100 @@ function ProductosMaquinas() {
     )
   }
 
+  const maquinasFiltradas = maquinas.filter((m) =>
+    filtroCategoria === 'TODAS' ? true : m.categoria === filtroCategoria
+  )
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <button onClick={abrirNuevo} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setFiltroCategoria('TODAS')}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${
+              filtroCategoria === 'TODAS' ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Todas
+          </button>
+          <button
+            onClick={() => setFiltroCategoria('AUTOCARGABLE')}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${
+              filtroCategoria === 'AUTOCARGABLE' ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Autocargables
+          </button>
+          <button
+            onClick={() => setFiltroCategoria('GRUA_HORQUILLA')}
+            className={`px-3 py-1.5 rounded text-sm font-medium ${
+              filtroCategoria === 'GRUA_HORQUILLA' ? 'bg-primary text-white' : 'bg-white text-dark border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Grúa Horquilla
+          </button>
+        </div>
+        <button onClick={abrirNuevo} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium whitespace-nowrap">
           + Nueva máquina
         </button>
       </div>
       {cargando ? (
         <p className="text-dark">Cargando...</p>
+      ) : maquinasFiltradas.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+          No hay máquinas en esta categoría todavía.
+        </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {maquinas.map((m) => (
-            <div key={m.id} className="bg-white rounded-lg shadow p-4">
-              {m.imagen && <img src={m.imagen} alt={m.nombre} className="w-full h-32 object-cover rounded mb-2" />}
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-dark">{m.nombre}</h3>
-                  {m.categoria && (
-                    <span className="inline-block text-[10px] font-medium text-primary bg-primary/10 rounded px-1.5 py-0.5 mb-1">
-                      {m.categoria === 'AUTOCARGABLE' ? 'Autocargable' : 'Grúa Horquilla'}
-                    </span>
-                  )}
-                  {(() => {
-                    const bullets = parseDescripcionBullets(m.descripcion)
-                    return bullets.length > 1 ? (
-                      <ul className="text-sm text-gray-500 list-disc pl-4 space-y-0.5">
-                        {bullets.map((punto, i) => (
-                          <li key={i}>{punto}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-sm text-gray-500">{m.descripcion}</p>
-                    )
-                  })()}
-                  <div className="text-primary text-sm font-medium mt-1 space-y-0.5">
-                    {m.precio_dia && <p>${Number(m.precio_dia).toLocaleString('es-CL')} / día</p>}
-                    {m.precio_semana && <p>${Number(m.precio_semana).toLocaleString('es-CL')} / semana</p>}
-                    {m.precio_mes && <p>${Number(m.precio_mes).toLocaleString('es-CL')} / mes</p>}
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded ${m.activo ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {maquinasFiltradas.map((m) => (
+            <div key={m.id} className="bg-white rounded-lg shadow overflow-hidden flex flex-col">
+              <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center relative">
+                {m.imagen ? (
+                  <img src={m.imagen} alt={m.nombre} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-gray-300 text-xs">Sin imagen</span>
+                )}
+                <span className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded font-medium ${m.activo ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>
                   {m.activo ? 'Activa' : 'Inactiva'}
                 </span>
               </div>
-              <div className="flex gap-3 mt-3">
-                <button onClick={() => abrirEditar(m)} className="text-primary text-sm font-medium hover:underline">Editar</button>
-                <button onClick={() => handleEliminar(m.id)} className="text-danger text-sm font-medium hover:underline">Eliminar</button>
+              <div className="p-3 flex flex-col gap-1 flex-1">
+                <h3 className="font-bold text-dark text-sm leading-tight">{m.nombre}</h3>
+                {m.categoria && (
+                  <span className="inline-block w-fit text-[10px] font-medium text-primary bg-primary/10 rounded px-1.5 py-0.5">
+                    {m.categoria === 'AUTOCARGABLE' ? 'Autocargable' : 'Grúa Horquilla'}
+                  </span>
+                )}
+                {(() => {
+                  const bullets = parseDescripcionBullets(m.descripcion)
+                  if (bullets.length <= 1) {
+                    return (
+                      <p className="text-xs text-gray-500 line-clamp-2 min-h-[2rem]">
+                        {m.descripcion || ''}
+                      </p>
+                    )
+                  }
+                  const visibles = bullets.slice(0, 2)
+                  const hayMas = bullets.length > 2
+                  return (
+                    <ul className="text-xs text-gray-500 list-disc pl-4 min-h-[2rem]">
+                      {visibles.map((punto, i) => (
+                        <li key={i} className="truncate">
+                          {punto}{hayMas && i === visibles.length - 1 ? '…' : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                })()}
+                <div className="text-primary font-bold text-xs space-y-0.5 mt-auto pt-1">
+                  {m.precio_dia && <p>${Number(m.precio_dia).toLocaleString('es-CL')} / día</p>}
+                  {m.precio_semana && <p>${Number(m.precio_semana).toLocaleString('es-CL')} / semana</p>}
+                  {m.precio_mes && <p>${Number(m.precio_mes).toLocaleString('es-CL')} / mes</p>}
+                </div>
+                <div className="flex gap-3 pt-2 mt-2 border-t">
+                  <button onClick={() => abrirEditar(m)} className="text-primary text-xs font-medium hover:underline">Editar</button>
+                  <button onClick={() => handleEliminar(m.id)} className="text-danger text-xs font-medium hover:underline">Eliminar</button>
+                </div>
               </div>
             </div>
           ))}

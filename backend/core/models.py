@@ -169,6 +169,18 @@ class SolicitudMaterial(models.Model):
         referencia = self.trabajo if self.trabajo else (self.solicitante or 'sin solicitante')
         return f"Solicitud de {referencia} ({self.estado})"
 
+class CategoriaMaquina(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    imagen = models.ImageField(upload_to='categorias_maquinas/', blank=True, null=True)
+    activa = models.BooleanField(default=True)  # false = oculta para clientes
+    orden = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+
+    def __str__(self):
+        return self.nombre
 
 class Maquina(models.Model):
     class Categoria(models.TextChoices):
@@ -176,8 +188,10 @@ class Maquina(models.Model):
         GRUA_HORQUILLA = 'GRUA_HORQUILLA', 'Grúa Horquilla'
 
     categoria = models.CharField(max_length=20, choices=Categoria.choices, blank=True, default='')
+    categoria_fk = models.ForeignKey(
+        'CategoriaMaquina', on_delete=models.SET_NULL, null=True, blank=True, related_name='maquinas'
+    )
     nombre = models.CharField(max_length=100)
-    
     descripcion = models.TextField(blank=True)
     imagen = models.ImageField(upload_to='maquinas/', blank=True, null=True)
 
@@ -291,7 +305,6 @@ class ReservaMaquina(models.Model):
         PENDIENTE = 'PENDIENTE', 'Pendiente'
         APROBADA = 'APROBADA', 'Aprobada'
         RECHAZADA = 'RECHAZADA', 'Rechazada'
-        
 
     class Entrega(models.TextChoices):
         RETIRO = 'RETIRO', 'Retira en local'
@@ -309,7 +322,6 @@ class ReservaMaquina(models.Model):
     fecha_fin = models.DateField()
     modalidad_entrega = models.CharField(max_length=20, choices=Entrega.choices, default=Entrega.RETIRO)
     direccion_entrega = models.CharField(max_length=255, blank=True)
-    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
     visto = models.BooleanField(default=False)  # si el cliente ya revisó la aprobación
     terminos_aceptados = models.BooleanField(default=False)
@@ -587,43 +599,6 @@ class ItemPedidoGas(models.Model):
     def __str__(self):
         return f"{self.nombre} x{self.cantidad}"
 
-class Cotizacion(models.Model):
-    """
-    Registro de una cotización generada desde un trabajo de Maestranza.
-    Se guarda al momento de generar el PDF, para poder consultarla o
-    volver a descargarla después sin tener que rehacerla desde cero.
-    """
-    trabajo = models.ForeignKey(
-        TrabajoMaestranza, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='cotizaciones'
-    )
-    empresa = models.ForeignKey(
-        Empresa, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones'
-    )
-    creado_por = models.ForeignKey(
-        Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='cotizaciones_creadas'
-    )
-
-    folio = models.CharField(max_length=20)
-    obra = models.CharField(max_length=255, blank=True)
-    mandante = models.CharField(max_length=255, blank=True)
-    lugar_trabajo = models.CharField(max_length=255, blank=True)
-    validez_dias = models.PositiveIntegerField(default=10)
-    items = models.JSONField(default=list)  # [{detalle, cantidad, precioUnitario}]
-    notas = models.TextField(blank=True)
-
-    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
-    iva = models.DecimalField(max_digits=12, decimal_places=2)
-    total = models.DecimalField(max_digits=12, decimal_places=2)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"Cotización {self.folio} — {self.empresa or self.mandante}"
-
 class TareaAgenda(models.Model):
     """
     Tarea/nota de agenda, con fecha y hora opcional. El admin la crea y
@@ -682,7 +657,7 @@ class Cotizacion(models.Model):
     # Si 'empresa' está seteada, el envío usa empresa.email y este campo
     # queda vacío/sin uso.
     cliente_email = models.EmailField(blank=True, null=True)
-        # Solo se usa cuando la cotización es una plantilla (sin trabajo
+    # Solo se usa cuando la cotización es una plantilla (sin trabajo
     # asociado) y el admin escribe manualmente a qué corresponde
     # ("Orden de trabajo" en el PDF).
     orden_trabajo_manual = models.CharField(max_length=255, blank=True)
