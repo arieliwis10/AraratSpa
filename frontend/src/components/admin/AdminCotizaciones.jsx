@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { getCotizaciones, enviarCorreoCotizacion } from '../../api/cotizaciones'
 import { getEmpresas } from '../../api/usuarios'
 import { generarCotizacionPDF, generarCotizacionPDFBase64 } from '../../utils/generarCotizacionPDF'
 import CotizacionModal from '../CotizacionModal'
+import { getCotizaciones, eliminarCotizacion, enviarCorreoCotizacion } from '../../api/cotizaciones'
 
 const MESES = [
   { valor: '01', label: 'Enero' },
@@ -126,6 +126,24 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
   const [cotizaciones, setCotizaciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [enviandoId, setEnviandoId] = useState(null)
+  const [eliminandoId, setEliminandoId] = useState(null)
+
+async function handleEliminar(c) {
+  const confirmado = window.confirm(
+    `¿Eliminar la cotización folio ${c.folio}? Esta acción no se puede deshacer.`
+  )
+  if (!confirmado) return
+
+  setEliminandoId(c.id)
+  try {
+    await eliminarCotizacion(c.id)
+    setCotizaciones((prev) => prev.filter((item) => item.id !== c.id))
+  } catch (err) {
+    alert('No se pudo eliminar la cotización. Intenta de nuevo.')
+  } finally {
+    setEliminandoId(null)
+  }
+}
 
   useEffect(() => {
     getCotizaciones().then((res) => {
@@ -250,6 +268,13 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
               className="bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 w-full sm:w-48 text-center"
             >
               📲 Compartir WhatsApp
+            </button>
+            <button
+              onClick={() => handleEliminar(c)}
+              disabled={eliminandoId === c.id}
+              className="bg-danger text-white px-3 py-1.5 rounded text-sm hover:opacity-90 w-full sm:w-48 text-center disabled:opacity-60"
+            >
+              {eliminandoId === c.id ? 'Eliminando...' : '🗑️ Eliminar'}
             </button>
           </div>
         </div>
