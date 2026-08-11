@@ -98,7 +98,7 @@ def _notificar_responsables(trabajo):
         f'Hola,\n\n'
         f'{mensaje_intro}\n\n'
         f'Descripción: {trabajo.descripcion}\n\n'
-        f'Ingresa al sistema para elegir retiro o delivery: https://app.araratchile.com\n\n'
+        f'Ingresa al sistema para elegir retiro o despacho: https://app.araratchile.com\n\n'
         f'Ararat Estructuras Metálicas'
     )
 
@@ -944,7 +944,7 @@ def _notificar_modalidad_admin(trabajo):
     empresa = trabajo.cliente.empresa if trabajo.cliente else None
     nombre_empresa = empresa.nombre if empresa else '-'
     modalidad_label = (
-        f'Despacho — {trabajo.direccion_entrega}' if trabajo.modalidad_entrega == 'DELIVERY'
+        f'Despacho — {trabajo.direccion_entrega}' if trabajo.modalidad_entrega == 'DESPACHO'
         else 'Retiro en local'
     )
 
@@ -1102,13 +1102,13 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
         modalidad = request.data.get('modalidad_entrega')
         direccion = request.data.get('direccion_entrega', '')
-        if modalidad not in ['RETIRO', 'DELIVERY']:
+        if modalidad not in ['RETIRO', 'DESPACHO']:
             return Response({'error': 'Modalidad inválida'}, status=400)
-        if modalidad == 'DELIVERY' and not direccion.strip():
+        if modalidad == 'DESPACHO' and not direccion.strip():
             return Response({'error': 'Falta la dirección de entrega'}, status=400)
 
         trabajo.modalidad_entrega = modalidad
-        trabajo.direccion_entrega = direccion if modalidad == 'DELIVERY' else ''
+        trabajo.direccion_entrega = direccion if modalidad == 'DESPACHO' else ''
         trabajo.save()
         _notificar_modalidad_admin(trabajo)
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
