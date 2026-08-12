@@ -1176,6 +1176,13 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         serializer = MaterialUsadoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(trabajo=trabajo)
+
+        _notificar_admins_push(
+            f'Material agregado — Trabajo #{trabajo.correlativo}',
+            f"{request.data.get('nombre', '')} — {request.data.get('cantidad', '')}",
+            '/admin'
+        )
+
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['post'])

@@ -17,6 +17,52 @@ const CATEGORIAS_FORMULARIO = CATEGORIAS.filter(
   (c) => c.valor !== 'INSUMOS' && c.valor !== 'REPUESTOS'
 )
 
+function FormularioMaterialAdmin({ trabajoId, onAgregar }) {
+  const [nombre, setNombre] = useState('')
+  const [cantidad, setCantidad] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function handleAgregar() {
+    if (!nombre || !cantidad) return
+    setEnviando(true)
+    try {
+      await onAgregar(trabajoId, { nombre, cantidad })
+      setNombre('')
+      setCantidad('')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="border rounded p-2 bg-gray-50 mb-3">
+      <label className="block text-xs font-medium mb-1 text-dark">Agregar material usado</label>
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          placeholder="Nombre"
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          className="border rounded p-2 text-sm"
+        />
+        <input
+          placeholder="Cantidad (ej: 5 m, 2 kg, 3 planchas)"
+          value={cantidad}
+          onChange={(e) => setCantidad(e.target.value)}
+          className="border rounded p-2 text-sm"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={handleAgregar}
+        disabled={enviando}
+        className="mt-2 text-xs bg-dark text-white px-3 py-1.5 rounded hover:bg-dark-soft disabled:opacity-50"
+      >
+        {enviando ? 'Agregando...' : '+ Agregar material'}
+      </button>
+    </div>
+  )
+}
+
 function GaleriaFotosAdmin({ trabajo, subiendo, onSubir, onEliminar, onVerFoto }) {
   return (
     <div className="mb-3">
@@ -295,6 +341,15 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
     }
   }
 
+  async function handleAgregarMaterialDirecto(trabajoId, data) {
+    try {
+      await agregarMaterial(trabajoId, data)
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al agregar el material')
+    }
+  }
+
   async function handleAgregarMaterial(trabajoId) {
     if (!nuevoMaterial.nombre || !nuevoMaterial.cantidad) return
     try {
@@ -337,17 +392,28 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-white rounded-lg shadow p-4">
-        <label className="block text-sm font-medium mb-1 text-dark">Filtrar por empresa</label>
-        <select
-          value={filtroEmpresa}
-          onChange={(e) => setFiltroEmpresa(e.target.value)}
-          className="border rounded p-2 text-sm w-full sm:w-64"
-        >
-          <option value="">Todas las empresas</option>
-          {empresas.map((e) => (
-            <option key={e.id} value={e.id}>{e.nombre}</option>
-          ))}
-        </select>
+        <div className="flex justify-between items-end gap-3">
+          <div>
+            <label className="block text-sm font-medium mb-1 text-dark">Filtrar por empresa</label>
+            <select
+              value={filtroEmpresa}
+              onChange={(e) => setFiltroEmpresa(e.target.value)}
+              className="border rounded p-2 text-sm w-full sm:w-64"
+            >
+              <option value="">Todas las empresas</option>
+              {empresas.map((e) => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={cargarTrabajos}
+            className="text-xs text-primary font-medium hover:underline whitespace-nowrap pb-2"
+          >
+            🔄 Actualizar lista
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-4">
@@ -529,6 +595,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                             </ul>
                           </div>
                         )}
+
+                        <FormularioMaterialAdmin trabajoId={t.id} onAgregar={handleAgregarMaterialDirecto} />
 
                         <button
                           onClick={() => setCotizando(t)}
