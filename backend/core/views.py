@@ -1042,9 +1042,10 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
     def actualizar_foto(self, request, pk=None):
         trabajo = self.get_object()
-        if trabajo.cliente != request.user:
+        es_admin = request.user.rol == 'ADMIN'
+        if not es_admin and trabajo.cliente != request.user:
             return Response({'error': 'No autorizado'}, status=403)
-        if trabajo.estado != 'PENDIENTE':
+        if not es_admin and trabajo.estado != 'PENDIENTE':
             return Response(
                 {'error': 'Solo puedes agregar fotos mientras el trabajo está pendiente'},
                 status=400,
@@ -1059,9 +1060,10 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['delete'], url_path='fotos/(?P<foto_id>[^/.]+)', permission_classes=[permissions.IsAuthenticated])
     def eliminar_foto(self, request, pk=None, foto_id=None):
         trabajo = self.get_object()
-        if trabajo.cliente != request.user:
+        es_admin = request.user.rol == 'ADMIN'
+        if not es_admin and trabajo.cliente != request.user:
             return Response({'error': 'No autorizado'}, status=403)
-        if trabajo.estado != 'PENDIENTE':
+        if not es_admin and trabajo.estado != 'PENDIENTE':
             return Response(
                 {'error': 'Solo puedes borrar fotos mientras el trabajo está pendiente'},
                 status=400,

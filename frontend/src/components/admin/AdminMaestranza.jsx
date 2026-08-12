@@ -1,19 +1,67 @@
 import { useState, useEffect } from 'react'
 import {
   getTrabajos, crearTrabajo, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
-  getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos
+  getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos,
+  actualizarFoto, eliminarFotoTrabajo
 } from '../../api/maestranza'
 import { getUsuarios, getEmpresas } from '../../api/usuarios'
 import { CATEGORIAS } from '../../constants/categorias'
 import BadgeEstado from '../BadgeEstado'
 import CotizacionModal from '../CotizacionModal'
 import FormularioTrabajo from '../FormularioTrabajo'
+import VisorFoto from '../VisorFoto'
 
 // Categorías que en el flujo del cliente usan el formulario simple (descripción + fotos).
 // Ferretería (INSUMOS/REPUESTOS) usa un carrito de catálogo aparte, no este formulario.
 const CATEGORIAS_FORMULARIO = CATEGORIAS.filter(
   (c) => c.valor !== 'INSUMOS' && c.valor !== 'REPUESTOS'
 )
+
+function GaleriaFotosAdmin({ trabajo, subiendo, onSubir, onEliminar, onVerFoto }) {
+  return (
+    <div className="mb-3">
+      {trabajo.fotos?.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {trabajo.fotos.map((f) => (
+            <div key={f.id} className="relative">
+              <img
+                src={f.imagen}
+                alt="evidencia"
+                onClick={() => onVerFoto(f.imagen)}
+                className="w-20 h-20 object-cover rounded border cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={() => onEliminar(trabajo.id, f.id)}
+                disabled={subiendo === trabajo.id}
+                className="absolute -top-2 -right-2 bg-danger text-white rounded-full w-5 h-5 text-xs leading-none flex items-center justify-center"
+                aria-label="Quitar foto"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <label
+        htmlFor={`admin-foto-input-${trabajo.id}`}
+        className="inline-block text-xs font-medium text-primary cursor-pointer hover:underline"
+      >
+        📷 {trabajo.fotos?.length > 0 ? 'Agregar más fotos' : 'Agregar fotos'}
+      </label>
+      <input
+        id={`admin-foto-input-${trabajo.id}`}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => onSubir(trabajo.id, e.target.files)}
+        disabled={subiendo === trabajo.id}
+        className="hidden"
+      />
+      {subiendo === trabajo.id && <p className="text-xs text-gray-400 mt-1">Subiendo...</p>}
+    </div>
+  )
+}
 
 export default function AdminMaestranza({ onActualizarPendientes }) {
   const [trabajos, setTrabajos] = useState([])
@@ -37,6 +85,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [empresaNuevoTrabajo, setEmpresaNuevoTrabajo] = useState('')
   const [clienteNuevoTrabajo, setClienteNuevoTrabajo] = useState('')
   const [categoriaNuevoTrabajo, setCategoriaNuevoTrabajo] = useState(null)
+  const [subiendoFoto, setSubiendoFoto] = useState(null)
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
   useEffect(() => {
     cargarEmpresas()
@@ -214,6 +264,34 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
       cargarTrabajos()
     } catch (err) {
       alert(err.response?.data?.responsable?.[0] || 'Error al crear el trabajo')
+    }
+  }
+
+  async function handleSubirFoto(trabajoId, files) {
+    if (!files || files.length === 0) return
+    setSubiendoFoto(trabajoId)
+    try {
+      const formData = new FormData()
+      Array.from(files).forEach((f) => formData.append('fotos', f))
+      await actualizarFoto(trabajoId, formData)
+      cargarTrabajos()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al subir la foto')
+    } finally {
+      setSubiendoFoto(null)
+    }
+  }
+
+  async function handleEliminarFoto(trabajoId, fotoId) {
+    if (!confirm('¿Seguro que quieres borrar esta foto?')) return
+    setSubiendoFoto(trabajoId)
+    try {
+      await eliminarFotoTrabajo(trabajoId, fotoId)
+      cargarTrabajos()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al borrar la foto')
+    } finally {
+      setSubiendoFoto(null)
     }
   }
 
@@ -433,13 +511,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           </span>
                         </div>
 
-                        {t.fotos?.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            {t.fotos.map((f) => (
-                              <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
-                            ))}
-                          </div>
-                        )}
+                        <GaleriaFotosAdmin
+                          trabajo={t}
+                          subiendo={subiendoFoto}
+                          onSubir={handleSubirFoto}
+                          onEliminar={handleEliminarFoto}
+                          onVerFoto={setFotoAmpliada}
+                        />
 
                         {t.materiales?.length > 0 && (
                           <div className="mb-3 border rounded p-2 bg-gray-50">
@@ -664,13 +742,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   )}
                 </div>
 
-                {t.fotos?.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {t.fotos.map((f) => (
-                      <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
-                    ))}
-                  </div>
-                )}
+                <GaleriaFotosAdmin
+                  trabajo={t}
+                  subiendo={subiendoFoto}
+                  onSubir={handleSubirFoto}
+                  onEliminar={handleEliminarFoto}
+                  onVerFoto={setFotoAmpliada}
+                />
 
                 {t.materiales?.length > 0 && (
                   <div className="mb-3 border rounded p-2 bg-gray-50">
@@ -868,6 +946,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
       {cotizando && (
         <CotizacionModal trabajo={cotizando} onCerrar={() => setCotizando(null)} />
       )}
+
+      <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import {
   marcarMaterialRecibido, getSolicitudesMaterial, hayEnBodega, solicitarMaterial
 } from '../api/maestranza'
 import BadgeEstado from '../components/BadgeEstado'
+import VisorFoto from '../components/VisorFoto'
 import fondoPanel from '../assets/fondo-panel.jpg'
 import { guardarDetalleFlexible, getProductosFlexibles } from '../api/maestranza'
 
@@ -13,6 +14,7 @@ export default function DashboardTrabajador() {
   const [trabajos, setTrabajos] = useState([])
   const [editando, setEditando] = useState(null)
   const [nuevoMaterial, setNuevoMaterial] = useState({ nombre: '', cantidad: '' })
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
   const [mostrarRetraso, setMostrarRetraso] = useState(false)
   const [motivoRetraso, setMotivoRetraso] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -413,7 +415,13 @@ export default function DashboardTrabajador() {
                             {t.fotos?.length > 0 && (
                               <div className="flex flex-wrap gap-2 mb-3">
                                 {t.fotos.map((f) => (
-                                  <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
+                                  <img
+                                    key={f.id}
+                                    src={f.imagen}
+                                    alt="evidencia"
+                                    onClick={() => setFotoAmpliada(f.imagen)}
+                                    className="w-20 h-20 object-cover rounded border cursor-pointer"
+                                  />
                                 ))}
                               </div>
                             )}
@@ -799,6 +807,7 @@ export default function DashboardTrabajador() {
         })()}
         </div>
       </main>
+      <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
+import VisorFoto from '../components/VisorFoto'
 import fondoPanel from '../assets/fondo-panel.jpg'
 import CarritoFerreteria from '../components/CarritoFerreteria'
 
@@ -116,6 +117,7 @@ export default function ClienteMaestranza() {
   const [mesFiltro, setMesFiltro] = useState(mesActualISO())
   const [expandido, setExpandido] = useState({})
   const [subiendoFoto, setSubiendoFoto] = useState(null)
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
   useEffect(() => {
     cargarTrabajos()
@@ -158,6 +160,7 @@ export default function ClienteMaestranza() {
   }
 
   async function handleEliminarFoto(trabajoId, fotoId) {
+    if (!confirm('¿Seguro que quieres borrar esta foto?')) return
     setSubiendoFoto(trabajoId)
     try {
       await eliminarFotoTrabajo(trabajoId, fotoId)
@@ -490,7 +493,8 @@ export default function ClienteMaestranza() {
                                     <img
                                       src={f.imagen}
                                       alt="evidencia"
-                                      className="w-20 h-20 object-cover rounded border"
+                                      onClick={() => setFotoAmpliada(f.imagen)}
+                                      className="w-20 h-20 object-cover rounded border cursor-pointer"
                                     />
                                     {t.estado === 'PENDIENTE' && (
                                       <button
@@ -610,6 +614,7 @@ export default function ClienteMaestranza() {
         )}
         </div>
       </main>
+      <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />
     </div>
   )
 }
