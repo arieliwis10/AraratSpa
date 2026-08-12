@@ -108,6 +108,19 @@ class TrabajoMaestranza(models.Model):
         return f"{self.get_categoria_display()} - {self.cliente.username}"
 
 
+class FotoTrabajo(models.Model):
+    """Fotos adicionales de un trabajo (el cliente puede subir varias)."""
+    trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='fotos')
+    imagen = models.ImageField(upload_to='maestranza/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Foto de {self.trabajo_id} ({self.created_at:%d-%m-%Y})"
+
+
 class MaterialUsado(models.Model):
     trabajo = models.ForeignKey(TrabajoMaestranza, on_delete=models.CASCADE, related_name='materiales')
     nombre = models.CharField(max_length=200)

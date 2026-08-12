@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
+    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado, FotoTrabajo,
     ComentarioTrabajo, SolicitudMaterial, Maquina, CategoriaMaquina, ReservaMaquina,
     ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
     ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas,
@@ -144,6 +144,12 @@ class FlexibleDetalleSerializer(serializers.ModelSerializer):
         return data
 
 
+class FotoTrabajoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FotoTrabajo
+        fields = ['id', 'imagen', 'created_at']
+
+
 class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.username', read_only=True)
     empresa_nombre = serializers.CharField(source='cliente.empresa.nombre', read_only=True, default=None)
@@ -154,13 +160,14 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     materiales = MaterialUsadoSerializer(many=True, read_only=True)
     comentarios = ComentarioTrabajoSerializer(many=True, read_only=True)
     detalle_flexible = FlexibleDetalleSerializer(read_only=True)
+    fotos = FotoTrabajoSerializer(many=True, read_only=True)
 
     class Meta:
         model = TrabajoMaestranza
         fields = [
             'id', 'correlativo', 'cliente', 'cliente_nombre', 'empresa_nombre',
             'responsable', 'responsable_nombre', 'asignado_a', 'asignado_a_nombre',
-            'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto',
+            'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto', 'fotos',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
             'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible'

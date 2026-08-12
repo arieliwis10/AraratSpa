@@ -1,15 +1,24 @@
 import { useState, useEffect } from 'react'
 import {
-  getTrabajos, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
+  getTrabajos, crearTrabajo, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
   getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos
 } from '../../api/maestranza'
 import { getUsuarios, getEmpresas } from '../../api/usuarios'
+import { CATEGORIAS } from '../../constants/categorias'
 import BadgeEstado from '../BadgeEstado'
 import CotizacionModal from '../CotizacionModal'
+import FormularioTrabajo from '../FormularioTrabajo'
+
+// Categorías que en el flujo del cliente usan el formulario simple (descripción + fotos).
+// Ferretería (INSUMOS/REPUESTOS) usa un carrito de catálogo aparte, no este formulario.
+const CATEGORIAS_FORMULARIO = CATEGORIAS.filter(
+  (c) => c.valor !== 'INSUMOS' && c.valor !== 'REPUESTOS'
+)
 
 export default function AdminMaestranza({ onActualizarPendientes }) {
   const [trabajos, setTrabajos] = useState([])
   const [empresas, setEmpresas] = useState([])
+  const [usuarios, setUsuarios] = useState([])
   const [trabajadores, setTrabajadores] = useState([])
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [editando, setEditando] = useState(null)
@@ -24,6 +33,10 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState({})
   const [mostrarSinAsignar, setMostrarSinAsignar] = useState(true)
   const [eliminando, setEliminando] = useState(null)
+  const [mostrarNuevoTrabajo, setMostrarNuevoTrabajo] = useState(false)
+  const [empresaNuevoTrabajo, setEmpresaNuevoTrabajo] = useState('')
+  const [clienteNuevoTrabajo, setClienteNuevoTrabajo] = useState('')
+  const [categoriaNuevoTrabajo, setCategoriaNuevoTrabajo] = useState(null)
 
   useEffect(() => {
     cargarEmpresas()
@@ -42,6 +55,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
   async function cargarTrabajadores() {
     const res = await getUsuarios()
+    setUsuarios(res.data)
     setTrabajadores(res.data.filter((u) => u.rol === 'TRABAJADOR'))
   }
 
@@ -186,6 +200,23 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
     }
   }
 
+  function cerrarNuevoTrabajo() {
+    setMostrarNuevoTrabajo(false)
+    setEmpresaNuevoTrabajo('')
+    setClienteNuevoTrabajo('')
+    setCategoriaNuevoTrabajo(null)
+  }
+
+  async function handleCrearTrabajoAdmin(formData) {
+    try {
+      await crearTrabajo(formData)
+      cerrarNuevoTrabajo()
+      cargarTrabajos()
+    } catch (err) {
+      alert(err.response?.data?.responsable?.[0] || 'Error al crear el trabajo')
+    }
+  }
+
   async function handleAgregarMaterial(trabajoId) {
     if (!nuevoMaterial.nombre || !nuevoMaterial.cantidad) return
     try {
@@ -221,6 +252,9 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const trabajosHistorial = trabajos.filter((t) => t.estado === 'TERMINADO')
   const trabajosActivos = trabajos.filter((t) => t.estado !== 'TERMINADO')
   const trabajosSinAsignar = trabajosActivos.filter((t) => t.estado === 'PENDIENTE' && !t.asignado_a)
+  const clientesEmpresaNuevoTrabajo = usuarios.filter(
+    (u) => u.rol === 'CLIENTE' && String(u.empresa) === String(empresaNuevoTrabajo)
+  )
 
   return (
     <div className="flex flex-col gap-4">
@@ -236,6 +270,115 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
             <option key={e.id} value={e.id}>{e.nombre}</option>
           ))}
         </select>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-4">
+        {!mostrarNuevoTrabajo ? (
+          <button
+            type="button"
+            onClick={() => setMostrarNuevoTrabajo(true)}
+            className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light"
+          >
+            + Nuevo trabajo para un cliente
+          </button>
+        ) : (
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-bold text-dark">Nuevo trabajo a nombre de un cliente</h3>
+              <button type="button" onClick={cerrarNuevoTrabajo} className="text-xs text-gray-500 hover:underline">
+                Cancelar
+              </button>
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-sm font-medium mb-1 text-dark">Empresa</label>
+              <select
+                value={empresaNuevoTrabajo}
+                onChange={(e) => {
+                  const empresaId = e.target.value
+                  setEmpresaNuevoTrabajo(empresaId)
+                  setCategoriaNuevoTrabajo(null)
+                  const clientes = usuarios.filter(
+                    (u) => u.rol === 'CLIENTE' && String(u.empresa) === String(empresaId)
+                  )
+                  // Si la empresa tiene un solo cliente, se elige solo (no tiene sentido preguntar dos veces).
+                  setClienteNuevoTrabajo(clientes.length === 1 ? String(clientes[0].id) : '')
+                }}
+                className="border rounded p-2 text-sm w-full sm:w-64"
+              >
+                <option value="">Selecciona una empresa</option>
+                {empresas.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            {empresaNuevoTrabajo && clientesEmpresaNuevoTrabajo.length > 1 && (
+              <div className="mb-3">
+                <label className="block text-sm font-medium mb-1 text-dark">Cliente</label>
+                <select
+                  value={clienteNuevoTrabajo}
+                  onChange={(e) => {
+                    setClienteNuevoTrabajo(e.target.value)
+                    setCategoriaNuevoTrabajo(null)
+                  }}
+                  className="border rounded p-2 text-sm w-full sm:w-64"
+                >
+                  <option value="">Selecciona un cliente</option>
+                  {clientesEmpresaNuevoTrabajo.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {[c.first_name, c.last_name].filter(Boolean).join(' ') || c.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {empresaNuevoTrabajo && clientesEmpresaNuevoTrabajo.length === 1 && (
+              <p className="text-xs text-gray-500 mb-3">
+                Cliente: {[clientesEmpresaNuevoTrabajo[0].first_name, clientesEmpresaNuevoTrabajo[0].last_name].filter(Boolean).join(' ') || clientesEmpresaNuevoTrabajo[0].username}
+              </p>
+            )}
+
+            {empresaNuevoTrabajo && clientesEmpresaNuevoTrabajo.length === 0 && (
+              <p className="text-xs text-gray-500 mb-3">
+                Esta empresa todavía no tiene un usuario cliente creado — créalo primero en Empresas/Usuarios.
+              </p>
+            )}
+
+            {clienteNuevoTrabajo && !categoriaNuevoTrabajo && (
+              <div className="mb-1">
+                <label className="block text-sm font-medium mb-2 text-dark">¿Qué tipo de trabajo?</label>
+                <div className="flex flex-wrap gap-2">
+                  {CATEGORIAS_FORMULARIO.map((cat) => (
+                    <button
+                      key={cat.valor}
+                      type="button"
+                      onClick={() => setCategoriaNuevoTrabajo(cat)}
+                      className="border rounded px-3 py-2 text-sm hover:bg-primary/5 hover:border-primary"
+                    >
+                      {cat.etiqueta}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Ferretería e insumos se piden desde el catálogo, conectado como el cliente — no desde aquí.
+                </p>
+              </div>
+            )}
+
+            {categoriaNuevoTrabajo && (
+              <FormularioTrabajo
+                categoria={categoriaNuevoTrabajo.valor}
+                categoriaLabel={categoriaNuevoTrabajo.etiqueta}
+                empresaId={empresaNuevoTrabajo}
+                clienteId={clienteNuevoTrabajo}
+                onGuardar={handleCrearTrabajoAdmin}
+                onCancelar={() => setCategoriaNuevoTrabajo(null)}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Carpeta Terminados: justo después del filtro por empresa */}
@@ -290,7 +433,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           </span>
                         </div>
 
-                        {t.foto && <img src={t.foto} alt="evidencia" className="w-20 h-20 object-cover rounded border mb-3" />}
+                        {t.fotos?.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {t.fotos.map((f) => (
+                              <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
+                            ))}
+                          </div>
+                        )}
 
                         {t.materiales?.length > 0 && (
                           <div className="mb-3 border rounded p-2 bg-gray-50">
@@ -515,7 +664,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   )}
                 </div>
 
-                {t.foto && <img src={t.foto} alt="evidencia" className="w-20 h-20 object-cover rounded border mb-3" />}
+                {t.fotos?.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {t.fotos.map((f) => (
+                      <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
+                    ))}
+                  </div>
+                )}
 
                 {t.materiales?.length > 0 && (
                   <div className="mb-3 border rounded p-2 bg-gray-50">

@@ -11,7 +11,7 @@ export const crearEmpresa = (data) => api.post('empresas/', data)
 export const actualizarEmpresa = (id, data) => api.patch(`empresas/${id}/`, data)
 export const eliminarEmpresa = (id) => api.delete(`empresas/${id}/`)
 
-export const getResponsables = () => api.get('responsables/')
+export const getResponsables = (params = {}) => api.get('responsables/', { params })
 export const crearResponsable = (data) => api.post('responsables/', data)
 export const actualizarResponsable = (id, data) => api.patch(`responsables/${id}/`, data)
 export const eliminarResponsable = (id) => api.delete(`responsables/${id}/`)

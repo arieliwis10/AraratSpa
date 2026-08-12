@@ -1,25 +1,30 @@
 import { useState, useEffect } from 'react'
 import { getResponsables } from '../api/usuarios'
 
-export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar, onCancelar }) {
+export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar, onCancelar, empresaId, clienteId }) {
   const [descripcion, setDescripcion] = useState('')
   const [centroCosto, setCentroCosto] = useState('')
   const [responsable, setResponsable] = useState('')
   const [responsables, setResponsables] = useState([])
-  const [foto, setFoto] = useState(null)
-  const [preview, setPreview] = useState(null)
+  const [fotos, setFotos] = useState([])
+  const [previews, setPreviews] = useState([])
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
-    getResponsables().then((res) => setResponsables(res.data))
-  }, [])
+    getResponsables(empresaId ? { empresa: empresaId } : {}).then((res) => setResponsables(res.data))
+  }, [empresaId])
 
   function handleFoto(e) {
-    const file = e.target.files[0]
-    if (file) {
-      setFoto(file)
-      setPreview(URL.createObjectURL(file))
-    }
+    const nuevos = Array.from(e.target.files || [])
+    if (nuevos.length === 0) return
+    setFotos((prev) => [...prev, ...nuevos])
+    setPreviews((prev) => [...prev, ...nuevos.map((f) => URL.createObjectURL(f))])
+    e.target.value = '' // permite volver a elegir el mismo archivo si lo saca y lo agrega de nuevo
+  }
+
+  function quitarFoto(index) {
+    setFotos((prev) => prev.filter((_, i) => i !== index))
+    setPreviews((prev) => prev.filter((_, i) => i !== index))
   }
 
   async function handleSubmit(e) {
@@ -36,7 +41,8 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
     formData.append('descripcion', descripcion)
     formData.append('centro_costo', centroCosto)
     if (responsable) formData.append('responsable', responsable)
-    if (foto) formData.append('foto', foto)
+    if (clienteId) formData.append('cliente', clienteId)
+    fotos.forEach((f) => formData.append('fotos', f))
 
     try {
       await onGuardar(formData)
@@ -91,16 +97,32 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
       )}
 
       <div>
-        <label className="block text-sm font-medium mb-1 text-dark">Foto (opcional)</label>
+        <label htmlFor="fotos-nuevo-trabajo" className="block text-sm font-medium mb-1 text-dark cursor-pointer">Fotos (opcional)</label>
         <input
+          id="fotos-nuevo-trabajo"
           type="file"
           accept="image/*"
           capture="environment"
+          multiple
           onChange={handleFoto}
           className="w-full border rounded p-2 bg-white"
         />
-        {preview && (
-          <img src={preview} alt="preview" className="mt-2 w-32 h-32 object-cover rounded border" />
+        {previews.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {previews.map((src, i) => (
+              <div key={i} className="relative">
+                <img src={src} alt={`preview ${i + 1}`} className="w-20 h-20 object-cover rounded border" />
+                <button
+                  type="button"
+                  onClick={() => quitarFoto(i)}
+                  className="absolute -top-2 -right-2 bg-danger text-white rounded-full w-5 h-5 text-xs leading-none flex items-center justify-center"
+                  aria-label="Quitar foto"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

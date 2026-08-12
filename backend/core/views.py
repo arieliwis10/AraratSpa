@@ -12,7 +12,7 @@ from rest_framework.response import Response
 import base64
 
 from .models import (
-    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado,
+    Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado, FotoTrabajo,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
     ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda,
     PushSubscription, CategoriaMaquina
@@ -632,7 +632,11 @@ class ResponsableViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.rol == 'ADMIN':
-            return Responsable.objects.all()
+            qs = Responsable.objects.all()
+            empresa_id = self.request.query_params.get('empresa')
+            if empresa_id:
+                qs = qs.filter(empresa_id=empresa_id)
+            return qs
         elif user.rol == 'CLIENTE' and user.empresa:
             return Responsable.objects.filter(empresa=user.empresa)
         return Responsable.objects.none()
@@ -996,7 +1000,16 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
-        trabajo = serializer.save(cliente=self.request.user)
+        cliente = self.request.user
+        if self.request.user.rol == 'ADMIN':
+            cliente_id = self.request.data.get('cliente')
+            if cliente_id:
+                cliente_elegido = Usuario.objects.filter(pk=cliente_id, rol='CLIENTE').first()
+                if cliente_elegido:
+                    cliente = cliente_elegido
+        trabajo = serializer.save(cliente=cliente)
+        for foto in self.request.FILES.getlist('fotos'):
+            FotoTrabajo.objects.create(trabajo=trabajo, imagen=foto)
         _notificar_nuevo_trabajo(trabajo)
 
     def perform_update(self, serializer):
@@ -1033,14 +1046,31 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No autorizado'}, status=403)
         if trabajo.estado != 'PENDIENTE':
             return Response(
-                {'error': 'Solo puedes agregar o cambiar la foto mientras el trabajo está pendiente'},
+                {'error': 'Solo puedes agregar fotos mientras el trabajo está pendiente'},
                 status=400,
             )
-        foto = request.FILES.get('foto')
-        if not foto:
+        fotos = request.FILES.getlist('fotos')
+        if not fotos:
             return Response({'error': 'Falta la foto'}, status=400)
-        trabajo.foto = foto
-        trabajo.save()
+        for foto in fotos:
+            FotoTrabajo.objects.create(trabajo=trabajo, imagen=foto)
+        return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+    @action(detail=True, methods=['delete'], url_path='fotos/(?P<foto_id>[^/.]+)', permission_classes=[permissions.IsAuthenticated])
+    def eliminar_foto(self, request, pk=None, foto_id=None):
+        trabajo = self.get_object()
+        if trabajo.cliente != request.user:
+            return Response({'error': 'No autorizado'}, status=403)
+        if trabajo.estado != 'PENDIENTE':
+            return Response(
+                {'error': 'Solo puedes borrar fotos mientras el trabajo está pendiente'},
+                status=400,
+            )
+        try:
+            foto = trabajo.fotos.get(pk=foto_id)
+        except FotoTrabajo.DoesNotExist:
+            return Response({'error': 'Foto no encontrada'}, status=404)
+        foto.delete()
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated])

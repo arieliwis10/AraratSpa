@@ -17,6 +17,8 @@ export const actualizarFoto = (id, formData) =>
   api.patch(`trabajos-maestranza/${id}/actualizar_foto/`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
+export const eliminarFotoTrabajo = (id, fotoId) =>
+  api.delete(`trabajos-maestranza/${id}/fotos/${fotoId}/`)
 export const agregarMaterial = (id, data) => api.post(`trabajos-maestranza/${id}/agregar_material/`, data)
 export const reportarRetraso = (id, motivo) => api.patch(`trabajos-maestranza/${id}/reportar_retraso/`, { motivo })
 

@@ -410,7 +410,13 @@ export default function DashboardTrabajador() {
                               </div>
                             )}
 
-                            {t.foto && <img src={t.foto} alt="evidencia" className="w-20 h-20 object-cover rounded border mb-3" />}
+                            {t.fotos?.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {t.fotos.map((f) => (
+                                  <img key={f.id} src={f.imagen} alt="evidencia" className="w-20 h-20 object-cover rounded border" />
+                                ))}
+                              </div>
+                            )}
 
                               {t.categoria === 'FLEXIBLES' && flexibleForm[t.id] && (
                               <div className="mb-3 border rounded p-3 bg-blue-50">

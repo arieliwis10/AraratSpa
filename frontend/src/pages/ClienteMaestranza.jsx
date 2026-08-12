@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario, actualizarFoto } from '../api/maestranza'
+import { getTrabajos, crearTrabajo, elegirEntrega, agregarComentario, actualizarFoto, eliminarFotoTrabajo } from '../api/maestranza'
 import { getResponsables } from '../api/usuarios'
 import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
@@ -142,16 +142,28 @@ export default function ClienteMaestranza() {
     }
   }
 
-  async function handleSubirFoto(trabajoId, file) {
-    if (!file) return
+  async function handleSubirFoto(trabajoId, files) {
+    if (!files || files.length === 0) return
     setSubiendoFoto(trabajoId)
     try {
       const formData = new FormData()
-      formData.append('foto', file)
+      Array.from(files).forEach((f) => formData.append('fotos', f))
       await actualizarFoto(trabajoId, formData)
       cargarTrabajos()
     } catch (err) {
       alert(err.response?.data?.error || 'Error al subir la foto')
+    } finally {
+      setSubiendoFoto(null)
+    }
+  }
+
+  async function handleEliminarFoto(trabajoId, fotoId) {
+    setSubiendoFoto(trabajoId)
+    try {
+      await eliminarFotoTrabajo(trabajoId, fotoId)
+      cargarTrabajos()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al borrar la foto')
     } finally {
       setSubiendoFoto(null)
     }
@@ -471,24 +483,43 @@ export default function ClienteMaestranza() {
                             <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
                             <p className="text-xs text-gray-500 mb-3">Centro de costo: {t.centro_costo}</p>
 
-                            {t.foto && (
-                              <img
-                                src={t.foto}
-                                alt="evidencia"
-                                className="mb-3 w-20 h-20 object-cover rounded border"
-                              />
+                            {t.fotos?.length > 0 && (
+                              <div className="mb-3 flex flex-wrap gap-2">
+                                {t.fotos.map((f) => (
+                                  <div key={f.id} className="relative">
+                                    <img
+                                      src={f.imagen}
+                                      alt="evidencia"
+                                      className="w-20 h-20 object-cover rounded border"
+                                    />
+                                    {t.estado === 'PENDIENTE' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEliminarFoto(t.id, f.id)}
+                                        disabled={subiendoFoto === t.id}
+                                        className="absolute -top-2 -right-2 bg-danger text-white rounded-full w-5 h-5 text-xs leading-none flex items-center justify-center"
+                                        aria-label="Quitar foto"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
                             )}
 
                             {t.estado === 'PENDIENTE' && (
                               <div className="mb-3 border rounded p-2 bg-gray-50">
-                                <label className="block text-xs font-bold text-dark mb-1">
-                                  {t.foto ? 'Cambiar foto' : '📷 Agregar foto (opcional)'}
+                                <label htmlFor={`foto-input-${t.id}`} className="block text-xs font-bold text-dark mb-1 cursor-pointer">
+                                  📷 Agregar fotos (opcional)
                                 </label>
                                 <input
+                                  id={`foto-input-${t.id}`}
                                   type="file"
                                   accept="image/*"
                                   capture="environment"
-                                  onChange={(e) => handleSubirFoto(t.id, e.target.files[0])}
+                                  multiple
+                                  onChange={(e) => handleSubirFoto(t.id, e.target.files)}
                                   disabled={subiendoFoto === t.id}
                                   className="w-full text-xs"
                                 />
