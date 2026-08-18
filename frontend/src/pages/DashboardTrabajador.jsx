@@ -6,6 +6,7 @@ import {
 } from '../api/maestranza'
 import BadgeEstado from '../components/BadgeEstado'
 import VisorFoto from '../components/VisorFoto'
+import Spinner from '../components/Spinner'
 import fondoPanel from '../assets/fondo-panel.jpg'
 import { guardarDetalleFlexible, getProductosFlexibles } from '../api/maestranza'
 
@@ -27,6 +28,8 @@ export default function DashboardTrabajador() {
   const [solicitudEnviada, setSolicitudEnviada] = useState(false)
   const [flexibleForm, setFlexibleForm] = useState({})
   const [productosFlexibles, setProductosFlexibles] = useState([])
+  const [guardandoCambios, setGuardandoCambios] = useState(false)
+  const [completando, setCompletando] = useState(false)
 
  useEffect(() => {
   cargarTrabajos()
@@ -94,6 +97,7 @@ export default function DashboardTrabajador() {
   }
 
   async function guardarCambios() {
+    setGuardandoCambios(true)
     try {
       await actualizarProgreso(editando.id, {
         estado: editando.estado,
@@ -103,10 +107,13 @@ export default function DashboardTrabajador() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al actualizar el trabajo')
+    } finally {
+      setGuardandoCambios(false)
     }
   }
 
   async function handleCompletar() {
+    setCompletando(true)
     try {
       await marcarCompletado(editando.id)
       setEditando(null)
@@ -118,6 +125,8 @@ export default function DashboardTrabajador() {
       } else {
         alert('Error al marcar el trabajo como completado')
       }
+    } finally {
+      setCompletando(false)
     }
   }
 
@@ -325,8 +334,9 @@ export default function DashboardTrabajador() {
                   <button
                     onClick={handleEnviarSolicitud}
                     disabled={enviandoSolicitud}
-                    className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50 w-fit"
+                    className="bg-primary text-white px-4 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-50 w-fit flex items-center gap-2"
                   >
+                    {enviandoSolicitud && <Spinner className="h-3.5 w-3.5" />}
                     {enviandoSolicitud ? 'Enviando...' : 'Enviar solicitud'}
                   </button>
                   {solicitudEnviada && (
@@ -693,9 +703,11 @@ export default function DashboardTrabajador() {
                                     </p>
                                     <button
                                       onClick={handleCompletar}
-                                      className="w-full bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light"
+                                      disabled={completando}
+                                      className="w-full bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-60 flex items-center justify-center gap-2"
                                     >
-                                      Marcar trabajo como completado
+                                      {completando && <Spinner />}
+                                      {completando ? 'Marcando como completado...' : 'Marcar trabajo como completado'}
                                     </button>
                                   </div>
                                 )}
@@ -726,10 +738,19 @@ export default function DashboardTrabajador() {
                                 </div>
 
                                 <div className="flex gap-2">
-                                  <button onClick={guardarCambios} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium">
-                                    Guardar cambios
+                                  <button
+                                    onClick={guardarCambios}
+                                    disabled={guardandoCambios}
+                                    className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium disabled:opacity-60 flex items-center gap-2"
+                                  >
+                                    {guardandoCambios && <Spinner />}
+                                    {guardandoCambios ? 'Guardando...' : 'Guardar cambios'}
                                   </button>
-                                  <button onClick={() => setEditando(null)} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm">
+                                  <button
+                                    onClick={() => setEditando(null)}
+                                    disabled={guardandoCambios}
+                                    className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm disabled:opacity-60"
+                                  >
                                     Cerrar
                                   </button>
                                 </div>

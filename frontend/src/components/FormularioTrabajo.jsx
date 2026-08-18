@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getResponsables } from '../api/usuarios'
+import Spinner from './Spinner'
 
 export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar, onCancelar, empresaId, clienteId }) {
   const [descripcion, setDescripcion] = useState('')
@@ -130,14 +131,16 @@ export default function FormularioTrabajo({ categoria, categoriaLabel, onGuardar
         <button
           type="submit"
           disabled={enviando}
-          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium disabled:opacity-50"
+          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light font-medium disabled:opacity-50 flex items-center gap-2"
         >
+          {enviando && <Spinner />}
           {enviando ? 'Enviando...' : 'Crear trabajo'}
         </button>
         <button
           type="button"
           onClick={onCancelar}
-          className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20"
+          disabled={enviando}
+          className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 disabled:opacity-50"
         >
           Cancelar
         </button>

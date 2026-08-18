@@ -11,6 +11,7 @@ import BadgeEstado from '../BadgeEstado'
 import CotizacionModal from '../CotizacionModal'
 import FormularioTrabajo from '../FormularioTrabajo'
 import VisorFoto from '../VisorFoto'
+import Spinner from '../Spinner'
 
 // Categorías que en el flujo del cliente usan el formulario simple (descripción + fotos).
 // Ferretería (INSUMOS/REPUESTOS) usa un carrito de catálogo aparte, no este formulario.
@@ -233,6 +234,9 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [categoriaNuevoTrabajo, setCategoriaNuevoTrabajo] = useState(null)
   const [subiendoFoto, setSubiendoFoto] = useState(null)
   const [fotoAmpliada, setFotoAmpliada] = useState(null)
+  const [aprobando, setAprobando] = useState(null)
+  const [completando, setCompletando] = useState(false)
+  const [guardandoCambios, setGuardandoCambios] = useState(false)
 
   useEffect(() => {
     cargarEmpresas()
@@ -354,31 +358,40 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
       payload.aprobado = true
     }
 
+    setGuardandoCambios(true)
     try {
       await actualizarTrabajo(editando.id, payload)
       setEditando(null)
       cargarTrabajos()
     } catch (err) {
       alert('Error al actualizar el trabajo')
+    } finally {
+      setGuardandoCambios(false)
     }
   }
 
   async function handleCompletar() {
+    setCompletando(true)
     try {
       await marcarCompletado(editando.id)
       setEditando(null)
       cargarTrabajos()
     } catch (err) {
       alert('Error al marcar el trabajo como completado')
+    } finally {
+      setCompletando(false)
     }
   }
 
   async function handleAprobar(id) {
+    setAprobando(id)
     try {
       await aprobarTrabajo(id)
       cargarTrabajos()
     } catch (err) {
       alert('Error al aprobar el trabajo')
+    } finally {
+      setAprobando(null)
     }
   }
 
@@ -909,9 +922,11 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   ) : (
                     <button
                       onClick={() => handleAprobar(t.id)}
-                      className="text-xs text-white bg-primary px-2 py-0.5 rounded hover:bg-primary-light whitespace-nowrap"
+                      disabled={aprobando === t.id}
+                      className="text-xs text-white bg-primary px-2 py-0.5 rounded hover:bg-primary-light whitespace-nowrap disabled:opacity-60 flex items-center gap-1.5"
                     >
-                      Aprobar trabajo
+                      {aprobando === t.id && <Spinner className="h-3 w-3" />}
+                      {aprobando === t.id ? 'Aprobando...' : 'Aprobar trabajo'}
                     </button>
                   )}
                 </div>
@@ -1051,9 +1066,11 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                         </p>
                         <button
                           onClick={handleCompletar}
-                          className="w-full bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light"
+                          disabled={completando}
+                          className="w-full bg-primary text-white px-3 py-2 rounded text-sm font-medium hover:bg-primary-light disabled:opacity-60 flex items-center justify-center gap-2"
                         >
-                          Marcar trabajo como completado
+                          {completando && <Spinner />}
+                          {completando ? 'Marcando como completado...' : 'Marcar trabajo como completado'}
                         </button>
                       </div>
                     )}
@@ -1085,10 +1102,15 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
                     <div className="flex gap-2 justify-between items-center">
                       <div className="flex gap-2">
-                        <button onClick={guardarCambios} className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium">
-                          Guardar cambios
+                        <button
+                          onClick={guardarCambios}
+                          disabled={guardandoCambios}
+                          className="bg-primary text-white px-4 py-2 rounded hover:bg-primary-light text-sm font-medium disabled:opacity-60 flex items-center gap-2"
+                        >
+                          {guardandoCambios && <Spinner />}
+                          {guardandoCambios ? 'Guardando...' : 'Guardar cambios'}
                         </button>
-                        <button onClick={() => setEditando(null)} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm">
+                        <button onClick={() => setEditando(null)} disabled={guardandoCambios} className="bg-dark/10 text-dark px-4 py-2 rounded hover:bg-dark/20 text-sm disabled:opacity-60">
                           Cerrar
                         </button>
                       </div>
