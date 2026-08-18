@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   getTrabajos, crearTrabajo, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
+  editarMaterial, eliminarMaterial,
   getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos,
   actualizarFoto, eliminarFotoTrabajo
 } from '../../api/maestranza'
@@ -59,6 +60,105 @@ function FormularioMaterialAdmin({ trabajoId, onAgregar }) {
       >
         {enviando ? 'Agregando...' : '+ Agregar material'}
       </button>
+    </div>
+  )
+}
+
+function ListaMateriales({ trabajoId, materiales, onEditar, onEliminar }) {
+  const [editandoId, setEditandoId] = useState(null)
+  const [form, setForm] = useState({ nombre: '', cantidad: '' })
+  const [guardando, setGuardando] = useState(false)
+  const [eliminandoId, setEliminandoId] = useState(null)
+
+  if (!materiales?.length) return null
+
+  function abrirEdicion(mat) {
+    setEditandoId(mat.id)
+    setForm({ nombre: mat.nombre, cantidad: mat.cantidad })
+  }
+
+  async function guardar(materialId) {
+    if (!form.nombre || !form.cantidad) return
+    setGuardando(true)
+    try {
+      await onEditar(trabajoId, materialId, form)
+      setEditandoId(null)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  async function eliminar(materialId) {
+    if (!confirm('¿Eliminar este material?')) return
+    setEliminandoId(materialId)
+    try {
+      await onEliminar(trabajoId, materialId)
+    } finally {
+      setEliminandoId(null)
+    }
+  }
+
+  return (
+    <div className="mb-3 border rounded p-2 bg-gray-50">
+      <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
+      <ul className="text-xs text-gray-600 flex flex-col gap-1.5">
+        {materiales.map((mat) => (
+          <li key={mat.id}>
+            {editandoId === mat.id ? (
+              <div className="flex gap-1.5 items-center flex-wrap bg-white border rounded p-1.5">
+                <input
+                  placeholder="Nombre"
+                  value={form.nombre}
+                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                  className="border rounded p-1 text-xs w-24 flex-1 min-w-[6rem]"
+                />
+                <input
+                  placeholder="Cantidad"
+                  value={form.cantidad}
+                  onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
+                  className="border rounded p-1 text-xs w-24 flex-1 min-w-[6rem]"
+                />
+                <button
+                  type="button"
+                  onClick={() => guardar(mat.id)}
+                  disabled={guardando}
+                  className="text-primary text-xs font-medium hover:underline disabled:opacity-50"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoId(null)}
+                  className="text-gray-400 text-xs hover:underline"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center gap-2">
+                <span className="truncate">• {mat.nombre} — {mat.cantidad}</span>
+                <span className="flex gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => abrirEdicion(mat)}
+                    className="text-primary text-xs font-medium hover:underline"
+                  >
+                    ✏️ Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => eliminar(mat.id)}
+                    disabled={eliminandoId === mat.id}
+                    className="text-danger text-xs font-medium hover:underline disabled:opacity-50"
+                  >
+                    {eliminandoId === mat.id ? 'Eliminando...' : '🗑 Eliminar'}
+                  </button>
+                </span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -361,6 +461,24 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
     }
   }
 
+  async function handleEditarMaterial(trabajoId, materialId, datos) {
+    try {
+      await editarMaterial(trabajoId, materialId, datos)
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al editar el material')
+    }
+  }
+
+  async function handleEliminarMaterial(trabajoId, materialId) {
+    try {
+      await eliminarMaterial(trabajoId, materialId)
+      cargarTrabajos()
+    } catch (err) {
+      alert('Error al eliminar el material')
+    }
+  }
+
   function handleComentarioChange(trabajoId, valor) {
     setComentarioTexto((prev) => ({ ...prev, [trabajoId]: valor }))
   }
@@ -585,16 +703,12 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           onVerFoto={setFotoAmpliada}
                         />
 
-                        {t.materiales?.length > 0 && (
-                          <div className="mb-3 border rounded p-2 bg-gray-50">
-                            <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
-                            <ul className="text-xs text-gray-600 list-disc pl-4">
-                              {t.materiales.map((mat) => (
-                                <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                        <ListaMateriales
+                          trabajoId={t.id}
+                          materiales={t.materiales}
+                          onEditar={handleEditarMaterial}
+                          onEliminar={handleEliminarMaterial}
+                        />
 
                         <FormularioMaterialAdmin trabajoId={t.id} onAgregar={handleAgregarMaterialDirecto} />
 
@@ -818,16 +932,12 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   onVerFoto={setFotoAmpliada}
                 />
 
-                {t.materiales?.length > 0 && (
-                  <div className="mb-3 border rounded p-2 bg-gray-50">
-                    <p className="text-xs font-bold text-dark mb-1">Materiales usados:</p>
-                    <ul className="text-xs text-gray-600 list-disc pl-4">
-                      {t.materiales.map((mat) => (
-                        <li key={mat.id}>{mat.nombre} — {mat.cantidad}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <ListaMateriales
+                  trabajoId={t.id}
+                  materiales={t.materiales}
+                  onEditar={handleEditarMaterial}
+                  onEliminar={handleEliminarMaterial}
+                />
 
                 {t.retrasado && (
                   <div className="mb-3 bg-danger/10 border border-danger/30 rounded p-3">

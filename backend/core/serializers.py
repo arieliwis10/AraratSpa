@@ -302,23 +302,6 @@ class PedidoGasSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['cliente', 'estado']
 
-class CotizacionSerializer(serializers.ModelSerializer):
-    empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
-    empresa_email = serializers.CharField(source='empresa.email', read_only=True, default=None)
-    trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
-    trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
-
-    class Meta:
-        model = Cotizacion
-        fields = [
-            'id', 'trabajo', 'trabajo_categoria_display', 'trabajo_correlativo',
-            'empresa', 'empresa_nombre', 'empresa_email', 'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
-            'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
-        ]
-        # 'empresa' y 'trabajo' ahora son escribibles (antes 'empresa' estaba
-        # forzado a solo-lectura), para poder crear cotizaciones "sueltas"
-        # eligiendo la empresa directamente, sin depender de un trabajo.
-        read_only_fields = ['created_at']
 
 class TareaAgendaSerializer(serializers.ModelSerializer):
     asignado_a_nombre = serializers.CharField(source='asignado_a.username', read_only=True, default=None)
@@ -335,9 +318,15 @@ class TareaAgendaSerializer(serializers.ModelSerializer):
             'completada', 'created_at', 'updated_at',
         ]
 
+
 class CotizacionSerializer(serializers.ModelSerializer):
     empresa_nombre = serializers.CharField(source='empresa.nombre', read_only=True, default=None)
-    empresa_email = serializers.CharField(source='empresa.email', read_only=True, default=None)
+    # Se usa el email del Usuario (cliente) logueado que pertenece a esa
+    # Empresa — es el correo real de contacto, no el de Empresa.email (ese
+    # campo no se está usando/cargando). Mismo criterio que enviar_correo
+    # en views.py, para que el frontend no bloquee el botón de envío por
+    # un campo que nunca se llena a mano.
+    empresa_email = serializers.SerializerMethodField()
     trabajo_categoria_display = serializers.CharField(source='trabajo.get_categoria_display', read_only=True, default=None)
     trabajo_correlativo = serializers.IntegerField(source='trabajo.correlativo', read_only=True, default=None)
     reserva_maquina_maquina_nombre = serializers.CharField(source='reserva_maquina.maquina.nombre', read_only=True, default=None)
@@ -358,6 +347,15 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
         ]
         read_only_fields = ['created_at']
+
+    def get_empresa_email(self, obj):
+        if not obj.empresa:
+            return None
+        if obj.empresa.email:
+            return obj.empresa.email
+        cliente = obj.empresa.clientes.exclude(email='').exclude(email__isnull=True).first()
+        return cliente.email if cliente else None
+
 
 class PushSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:

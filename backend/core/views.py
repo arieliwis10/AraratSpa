@@ -1185,6 +1185,23 @@ class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
 
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
+    @action(detail=True, methods=['patch', 'delete'],url_path='materiales/(?P<material_id>[^/.]+)',permission_classes=[EsAdmin])
+    def material_detalle(self, request, pk=None, material_id=None):
+        trabajo = self.get_object()
+        try:
+            material = trabajo.materiales.get(pk=material_id)
+        except MaterialUsado.DoesNotExist:
+            return Response({'error': 'Material no encontrado'}, status=404)
+
+        if request.method == 'DELETE':
+            material.delete()
+            return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
+        serializer = MaterialUsadoSerializer(material, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(TrabajoMaestranzaSerializer(trabajo).data)
+
     @action(detail=True, methods=['post'])
     def guardar_detalle_flexible(self, request, pk=None):
         trabajo = self.get_object()
@@ -1442,6 +1459,20 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
             **extra
         )
         _notificar_reserva_maquina(reserva)
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return [EsAdmin()]
+        return [permissions.IsAuthenticated()]
+
+    def destroy(self, request, *args, **kwargs):
+        reserva = self.get_object()
+        if reserva.estado != 'RECHAZADA':
+            return Response(
+                {'error': 'Solo se pueden eliminar reservas rechazadas.'},
+                status=400,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
     def cambiar_estado(self, request, pk=None):
@@ -1784,16 +1815,26 @@ class CotizacionViewSet(viewsets.ModelViewSet):
         if not pdf_base64:
             return Response({'error': 'Falta el PDF de la cotización'}, status=400)
 
-        # Prioridad: si tiene empresa registrada, usa su email. Si no,
-        # usa el email de contacto puntual (persona sin empresa).
+                # Se usa el email del Usuario (cliente) logueado que pertenece a
+        # esa Empresa — es el correo real de contacto, no el de Empresa.email
+        # (ese campo no se está usando/cargando). Si por algún motivo la
+        # empresa no tiene ningún cliente con email, cae a cliente_email
+        # (cotizaciones tipo "persona sin empresa").
         empresa = cotizacion.empresa
-        if empresa and empresa.email:
-            email_destino = empresa.email
-        elif cotizacion.cliente_email:
+        email_destino = None
+
+        if empresa:
+            cliente_empresa = empresa.clientes.exclude(email='').first()
+            if cliente_empresa:
+                email_destino = cliente_empresa.email
+
+        if not email_destino and cotizacion.cliente_email:
             email_destino = cotizacion.cliente_email
-        else:
+
+        if not email_destino:
             return Response(
-                {'error': 'No hay un email de destino cargado para esta cotización.'},
+                {'error': 'No hay un email de destino cargado para esta cotización. '
+                          'Agrega el email al usuario de esa empresa en Usuarios.'},
                 status=400,
             )
 
@@ -1848,7 +1889,7 @@ class CotizacionViewSet(viewsets.ModelViewSet):
                         Te compartimos la cotización solicitada{f' para la obra <strong>{cotizacion.obra}</strong>' if cotizacion.obra else ''}.
                       </p>
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:0 0 16px 0;">
-                        <tr><td style="{celda_borde} font-weight:bold; width:40%;">Empresa</td><td style="{celda_borde}">{nombre_empresa}</td></tr>
+                        <tr><td style="{celda_borde} font-weight:bold; width:40%;">Empresa</td><td style="{celda_borde}">{nombre_destino}</td></tr>
                         <tr><td style="{celda_borde} font-weight:bold;">Folio</td><td style="{celda_borde}">{cotizacion.folio}</td></tr>
                         <tr><td style="{celda_borde} font-weight:bold;">Total (IVA incluido)</td><td style="{celda_borde} font-weight:bold;">{total_fmt}</td></tr>
                       </table>

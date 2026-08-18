@@ -32,3 +32,5 @@ export const actualizarCategoriaMaquina = (id, formData) =>
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 export const eliminarCategoriaMaquina = (id) => api.delete(`categorias-maquinas/${id}/`)
+export const eliminarReserva = (id) =>
+  api.delete(`/reservas-maquinas/${id}/`)

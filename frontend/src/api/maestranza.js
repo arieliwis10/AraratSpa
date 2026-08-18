@@ -40,3 +40,9 @@ export const getStockBajoFlexibles = () => api.get('productos-flexibles/stock_ba
 
 export const guardarDetalleFlexible = (trabajoId, data) =>
   api.post(`trabajos-maestranza/${trabajoId}/guardar_detalle_flexible/`, data)
+export const editarMaterial = (trabajoId, materialId, datos) =>
+  api.patch(`/trabajos-maestranza/${trabajoId}/materiales/${materialId}/`, datos)
+
+export const eliminarMaterial = (trabajoId, materialId) =>
+  api.delete(`/trabajos-maestranza/${trabajoId}/materiales/${materialId}/`)
+

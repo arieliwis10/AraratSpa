@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   getMaquinas, crearMaquina, actualizarMaquina, eliminarMaquina,
-  getReservas, cambiarEstadoReserva,
+  getReservas, cambiarEstadoReserva, eliminarReserva,
   getProductosGas, crearProductoGas, actualizarProductoGas, eliminarProductoGas,
   getStockBajoGas, getPedidosGas, marcarPedidoGasRevisado,
   getCategoriasMaquinas, crearCategoriaMaquina, actualizarCategoriaMaquina, eliminarCategoriaMaquina,
@@ -520,6 +520,7 @@ function PedidosMaquinas({ onPendientesChange }) {
   const [filtroCliente, setFiltroCliente] = useState('')
   const [cargando, setCargando] = useState(true)
   const [cotizando, setCotizando] = useState(null)
+  const [eliminando, setEliminando] = useState(null)
 
   useEffect(() => {
     getUsuarios().then((res) => setClientes(res.data.filter((u) => u.rol === 'CLIENTE')))
@@ -551,6 +552,19 @@ function PedidosMaquinas({ onPendientesChange }) {
       cargarReservas()
     } catch (err) {
       alert('Error al actualizar la reserva')
+    }
+  }
+
+  async function handleEliminarReserva(id) {
+    if (!confirm('¿Eliminar esta reserva rechazada? Esta acción no se puede deshacer.')) return
+    setEliminando(id)
+    try {
+      await eliminarReserva(id)
+      cargarReservas()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al eliminar la reserva')
+    } finally {
+      setEliminando(null)
     }
   }
 
@@ -621,6 +635,15 @@ function PedidosMaquinas({ onPendientesChange }) {
                       Cancelar reserva
                     </button>
                   </div>
+                )}
+                {r.estado === 'RECHAZADA' && (
+                  <button
+                    onClick={() => handleEliminarReserva(r.id)}
+                    disabled={eliminando === r.id}
+                    className="bg-danger text-white px-3 py-1 rounded text-sm hover:bg-danger-light whitespace-nowrap disabled:opacity-50"
+                  >
+                    {eliminando === r.id ? 'Eliminando...' : '🗑 Eliminar'}
+                  </button>
                 )}
               </div>
             </div>
