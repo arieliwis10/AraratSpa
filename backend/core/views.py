@@ -1789,23 +1789,34 @@ class CotizacionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Cotizacion.objects.select_related('trabajo', 'empresa').all()
 
-    def perform_create(self, serializer):
-        trabajo = serializer.validated_data.get('trabajo')
-        reserva_maquina = serializer.validated_data.get('reserva_maquina')
-        pedido_ferreteria = serializer.validated_data.get('pedido_ferreteria')
-        pedido_gas = serializer.validated_data.get('pedido_gas')
+    def _resolver_empresa(self, serializer, instance=None):
         empresa = serializer.validated_data.get('empresa')
+        if empresa:
+            return empresa
 
-        if not empresa and trabajo and trabajo.cliente:
-            empresa = trabajo.cliente.empresa
-        elif not empresa and reserva_maquina and reserva_maquina.cliente:
-            empresa = reserva_maquina.cliente.empresa
-        elif not empresa and pedido_ferreteria and pedido_ferreteria.cliente:
-            empresa = pedido_ferreteria.cliente.empresa
-        elif not empresa and pedido_gas and pedido_gas.cliente:
-            empresa = pedido_gas.cliente.empresa
+        trabajo = serializer.validated_data.get('trabajo') or (instance.trabajo if instance else None)
+        reserva_maquina = serializer.validated_data.get('reserva_maquina') or (instance.reserva_maquina if instance else None)
+        pedido_ferreteria = serializer.validated_data.get('pedido_ferreteria') or (instance.pedido_ferreteria if instance else None)
+        pedido_gas = serializer.validated_data.get('pedido_gas') or (instance.pedido_gas if instance else None)
 
+        if trabajo and trabajo.cliente:
+            return trabajo.cliente.empresa
+        if reserva_maquina and reserva_maquina.cliente:
+            return reserva_maquina.cliente.empresa
+        if pedido_ferreteria and pedido_ferreteria.cliente:
+            return pedido_ferreteria.cliente.empresa
+        if pedido_gas and pedido_gas.cliente:
+            return pedido_gas.cliente.empresa
+
+        return empresa  # queda None solo si es plantilla sin empresa elegida
+
+    def perform_create(self, serializer):
+        empresa = self._resolver_empresa(serializer)
         serializer.save(empresa=empresa, creado_por=self.request.user)
+
+    def perform_update(self, serializer):
+        empresa = self._resolver_empresa(serializer, instance=serializer.instance)
+        serializer.save(empresa=empresa)
 
     @action(detail=True, methods=['post'], permission_classes=[EsAdmin])
     def enviar_correo(self, request, pk=None):
