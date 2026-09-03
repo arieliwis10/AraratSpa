@@ -1036,7 +1036,34 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def historial_descripcion(self, instance):
         empresa = instance.cliente.empresa.nombre if instance.cliente and instance.cliente.empresa else '-'
-        return f"{instance.get_categoria_display()} #{instance.correlativo} — {empresa}"
+        return f"#{instance.correlativo} {instance.get_categoria_display()} - {empresa}"
+
+    def _url_absoluta(self, imagefield):
+        try:
+            url = imagefield.url
+        except ValueError:
+            return None
+        request = getattr(self, 'request', None)
+        return request.build_absolute_uri(url) if request else url
+
+    def historial_detalle(self, instance):
+        fotos = []
+        if instance.foto:
+            url = self._url_absoluta(instance.foto)
+            if url:
+                fotos.append(url)
+        for foto in instance.fotos.all():
+            if foto.imagen:
+                url = self._url_absoluta(foto.imagen)
+                if url:
+                    fotos.append(url)
+
+        return {
+            'descripcion_trabajo': instance.descripcion,
+            'centro_costo': instance.centro_costo,
+            'responsable': instance.responsable.nombre if instance.responsable else None,
+            'fotos': fotos,
+        }
 
 
     def get_queryset(self):

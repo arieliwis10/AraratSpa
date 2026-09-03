@@ -6,6 +6,51 @@ function formatFechaHora(fechaISO) {
   return new Date(fechaISO).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+const ETIQUETAS_DETALLE = {
+  descripcion_trabajo: 'Descripción',
+  centro_costo: 'Centro de costo',
+  responsable: 'Responsable',
+}
+
+function DetalleEliminacion({ detalle }) {
+  if (!detalle || Object.keys(detalle).length === 0) return null
+
+  const { fotos, ...resto } = detalle
+  const entradas = Object.entries(resto).filter(
+    ([, valor]) => valor !== null && valor !== undefined && valor !== ''
+  )
+  const tieneFotos = Array.isArray(fotos) && fotos.length > 0
+
+  if (entradas.length === 0 && !tieneFotos) return null
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      {entradas.map(([clave, valor]) => (
+        <p key={clave} className="text-xs text-gray-500">
+          <span className="font-medium text-gray-600">
+            {ETIQUETAS_DETALLE[clave] || clave}:
+          </span>{' '}
+          {String(valor)}
+        </p>
+      ))}
+
+      {tieneFotos && (
+        <div className="flex gap-1.5 flex-wrap mt-0.5">
+          {fotos.map((url, i) => (
+            <a key={i} href={url} target="_blank" rel="noreferrer">
+              <img
+                src={url}
+                alt={`Foto ${i + 1}`}
+                className="w-14 h-14 object-cover rounded border border-gray-200 hover:opacity-80"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function HistorialEliminaciones() {
   const [historial, setHistorial] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -45,12 +90,13 @@ export default function HistorialEliminaciones() {
       ) : (
         <div className="flex flex-col gap-2">
           {filtrado.map((h) => (
-            <div key={h.id} className="bg-white rounded-lg shadow p-3 flex justify-between items-center gap-3 flex-wrap">
+            <div key={h.id} className="bg-white rounded-lg shadow p-3 flex justify-between items-start gap-3 flex-wrap">
               <div>
                 <span className="text-xs font-bold text-danger uppercase">{h.tipo}</span>
                 <p className="text-sm text-dark">{h.descripcion}</p>
+                <DetalleEliminacion detalle={h.detalle} />
               </div>
-              <div className="text-right text-xs text-gray-500">
+              <div className="text-right text-xs text-gray-500 shrink-0">
                 <p>{h.eliminado_por_nombre}</p>
                 <p>{formatFechaHora(h.fecha)}</p>
               </div>
