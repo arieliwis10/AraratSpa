@@ -60,6 +60,10 @@ function calcularLabelOrigen(c) {
   return c.orden_trabajo_manual || '-'
 }
 
+function esCotizacionSuelta(c) {
+  return !c.trabajo && !c.reserva_maquina && !c.pedido_ferreteria && !c.pedido_gas
+}
+
 function FiltrosComunes({
   empresas, filtroEmpresa, setFiltroEmpresa,
   filtroMes, setFiltroMes, filtroAnio, setFiltroAnio,
@@ -350,7 +354,7 @@ export default function AdminCotizaciones() {
           filtroEmpresa={filtroEmpresa}
           filtroMes={filtroMes}
           filtroAnio={filtroAnio}
-          filtroOrigen={(c) => !!c.trabajo}
+          filtroOrigen={(c) => !!c.trabajo || esCotizacionSuelta(c)} 
           mensajeVacio="No hay cotizaciones de Maestranza con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
         />

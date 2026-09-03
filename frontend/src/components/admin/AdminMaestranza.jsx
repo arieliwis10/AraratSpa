@@ -700,6 +700,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
                           <span>Centro de costo: {t.centro_costo}</span>
+                          {t.responsable_nombre && <span>Responsable: {t.responsable_nombre}</span>}
                           {t.asignado_a_nombre && <span>Realizado por: {t.asignado_a_nombre}</span>}
                           <span>
                             {t.modalidad_entrega
@@ -933,6 +934,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
                   <span>Centro de costo: {t.centro_costo}</span>
+                  {t.responsable_nombre && <span>Responsable: {t.responsable_nombre}</span>}
                   {t.asignado_a_nombre && <span>Asignado a: {t.asignado_a_nombre}</span>}
                   {t.modalidad_entrega && (
                     <span>{t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : 'DESPACHO'}</span>
