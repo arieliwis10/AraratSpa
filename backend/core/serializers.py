@@ -4,7 +4,7 @@ from .models import (
     ComentarioTrabajo, SolicitudMaterial, Maquina, CategoriaMaquina, ReservaMaquina,
     ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
     ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas,
-    Cotizacion, TareaAgenda, PushSubscription
+    Cotizacion, TareaAgenda, PushSubscription, HistorialEliminacion
 )
 
 
@@ -361,3 +361,16 @@ class PushSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = PushSubscription
         fields = ['endpoint', 'p256dh', 'auth']
+
+class HistorialEliminacionSerializer(serializers.ModelSerializer):
+    eliminado_por_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HistorialEliminacion
+        fields = ['id', 'tipo', 'descripcion', 'detalle', 'eliminado_por_nombre', 'fecha']
+
+    def get_eliminado_por_nombre(self, obj):
+        if not obj.eliminado_por:
+            return 'Usuario eliminado'
+        nombre = f"{obj.eliminado_por.first_name} {obj.eliminado_por.last_name}".strip()
+        return nombre or obj.eliminado_por.username

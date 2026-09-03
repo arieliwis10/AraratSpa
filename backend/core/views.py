@@ -15,7 +15,7 @@ from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado, FotoTrabajo,
     ComentarioTrabajo, SolicitudMaterial, Maquina, ReservaMaquina, ProductoFerreteria, PedidoFerreteria, ItemPedidoFerreteria,
     ProductoFlexible, FlexibleDetalle, ProductoGas, PedidoGas, ItemPedidoGas, Cotizacion, TareaAgenda,
-    PushSubscription, CategoriaMaquina
+    PushSubscription, CategoriaMaquina, HistorialEliminacion
 )
 from .serializers import (
     UsuarioSerializer, UsuarioCreateSerializer, EmpresaSerializer, ResponsableSerializer,
@@ -23,7 +23,7 @@ from .serializers import (
     SolicitudMaterialSerializer, MaquinaSerializer, ReservaMaquinaSerializer,
     ProductoFerreteriaSerializer, PedidoFerreteriaSerializer, ItemPedidoFerreteriaSerializer,
     ProductoFlexibleSerializer, FlexibleDetalleSerializer, ProductoGasSerializer, PedidoGasSerializer, ItemPedidoGasSerializer,
-    CotizacionSerializer, TareaAgendaSerializer, CategoriaMaquinaSerializer
+    CotizacionSerializer, TareaAgendaSerializer, CategoriaMaquinaSerializer, HistorialEliminacionSerializer
 )
 from .push_utils import enviar_push
 
@@ -31,6 +31,43 @@ from .push_utils import enviar_push
 class EsAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
+
+def _registrar_eliminacion(request, tipo, descripcion, detalle=None):
+    """Guarda una fila en el historial justo antes de borrar el objeto real."""
+    usuario = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+    HistorialEliminacion.objects.create(
+        tipo=tipo,
+        descripcion=descripcion[:255],
+        detalle=detalle or {},
+        eliminado_por=usuario,
+    )
+
+
+class RegistraEliminacionMixin:
+    """
+    Mixin para ViewSets: cada vez que se elimina un objeto vía
+    DELETE /recurso/<id>/, deja una fila en HistorialEliminacion antes de
+    borrarlo. El ViewSet que lo use define:
+      - historial_tipo: nombre legible del tipo (ej. 'Empresa')
+      - historial_descripcion(instance): texto legible de qué se borró
+      - historial_detalle(instance): (opcional) datos extra a guardar
+    """
+    historial_tipo = None
+
+    def historial_descripcion(self, instance):
+        return str(instance)
+
+    def historial_detalle(self, instance):
+        return {}
+
+    def perform_destroy(self, instance):
+        _registrar_eliminacion(
+            self.request,
+            tipo=self.historial_tipo or instance.__class__.__name__,
+            descripcion=self.historial_descripcion(instance),
+            detalle=self.historial_detalle(instance),
+        )
+        instance.delete()
 
 
 # URL pública donde queda alojado el logo (reemplaza por la ruta real una vez que lo subas)
@@ -614,20 +651,28 @@ def _notificar_pedido_ferreteria(pedido):
     )
 
 
-class EmpresaViewSet(viewsets.ModelViewSet):
+class EmpresaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     queryset = Empresa.objects.all()
     serializer_class = EmpresaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Empresa'
 
+    def historial_descripcion(self, instance):
+        return instance.nombre
+    
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
 
 
-class ResponsableViewSet(viewsets.ModelViewSet):
+class ResponsableViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = ResponsableSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Responsable'
+
+    def historial_descripcion(self, instance):
+        return f"{instance.nombre} ({instance.empresa.nombre})"
 
     def get_queryset(self):
         user = self.request.user
@@ -647,9 +692,15 @@ class ResponsableViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
 
-class UsuarioViewSet(viewsets.ModelViewSet):
+class UsuarioViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     queryset = Usuario.objects.all()
     permission_classes = [EsAdmin]
+    historial_tipo = 'Usuario'
+
+    def historial_descripcion(self, instance):
+        nombre = f"{instance.first_name} {instance.last_name}".strip()
+        empresa = f" — {instance.empresa.nombre}" if instance.empresa else ''
+        return f"{instance.username} ({nombre or instance.get_rol_display()}){empresa}"
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -977,10 +1028,16 @@ def _notificar_modalidad_admin(trabajo):
     )
 
 
-class TrabajoMaestranzaViewSet(viewsets.ModelViewSet):
+class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = TrabajoMaestranzaSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    historial_tipo = 'Trabajo de Maestranza'
+
+    def historial_descripcion(self, instance):
+        empresa = instance.cliente.empresa.nombre if instance.cliente and instance.cliente.empresa else '-'
+        return f"{instance.get_categoria_display()} #{instance.correlativo} — {empresa}"
+
 
     def get_queryset(self):
         user = self.request.user
@@ -1364,11 +1421,15 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
         return Response(SolicitudMaterialSerializer(solicitud).data)
 
 
-class MaquinaViewSet(viewsets.ModelViewSet):
+class MaquinaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     queryset = Maquina.objects.all()
     serializer_class = MaquinaSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+    historial_tipo = 'Máquina'
+
+    def historial_descripcion(self, instance):
+        return instance.nombre
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -1405,11 +1466,15 @@ class MaquinaViewSet(viewsets.ModelViewSet):
 
         return Response(resultado)
 
-class CategoriaMaquinaViewSet(viewsets.ModelViewSet):
+class CategoriaMaquinaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     queryset = CategoriaMaquina.objects.all()
     serializer_class = CategoriaMaquinaSerializer
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Categoría de máquina'
+
+    def historial_descripcion(self, instance):
+        return instance.nombre
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -1417,9 +1482,13 @@ class CategoriaMaquinaViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
 
-class ReservaMaquinaViewSet(viewsets.ModelViewSet):
+class ReservaMaquinaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = ReservaMaquinaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Reserva de máquina'
+
+    def historial_descripcion(self, instance):
+        return f"{instance.maquina.nombre} — {instance.cliente.username} ({instance.fecha_inicio} a {instance.fecha_fin})"
 
     def get_queryset(self):
         user = self.request.user
@@ -1507,10 +1576,14 @@ class ReservaMaquinaViewSet(viewsets.ModelViewSet):
         return Response({'ok': True})
 
 
-class ProductoFerreteriaViewSet(viewsets.ModelViewSet):
+class ProductoFerreteriaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = ProductoFerreteriaSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Producto de ferretería'
+
+    def historial_descripcion(self, instance):
+        return f"{instance.nombre} (SKU: {instance.sku or '-'})"
 
     def get_queryset(self):
         qs = ProductoFerreteria.objects.all()
@@ -1529,9 +1602,14 @@ class ProductoFerreteriaViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
 
-class PedidoFerreteriaViewSet(viewsets.ModelViewSet):
+class PedidoFerreteriaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = PedidoFerreteriaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Pedido de ferretería'
+
+    def historial_descripcion(self, instance):
+        empresa = instance.cliente.empresa.nombre if instance.cliente.empresa else instance.cliente.username
+        return f"{instance.get_categoria_display()} — {empresa}"
 
     def get_queryset(self):
         user = self.request.user
@@ -1607,9 +1685,13 @@ class PedidoFerreteriaViewSet(viewsets.ModelViewSet):
         return Response(PedidoFerreteriaSerializer(pedido).data)
 
 
-class ProductoFlexibleViewSet(viewsets.ModelViewSet):
+class ProductoFlexibleViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = ProductoFlexibleSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Producto Flexible'
+
+    def historial_descripcion(self, instance):
+        return str(instance)
 
     def get_queryset(self):
         qs = ProductoFlexible.objects.all()
@@ -1632,9 +1714,13 @@ class ProductoFlexibleViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(productos, many=True)
         return Response(serializer.data)
 
-class ProductoGasViewSet(viewsets.ModelViewSet):
+class ProductoGasViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = ProductoGasSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Producto de Gas'
+
+    def historial_descripcion(self, instance):
+        return str(instance)
 
     def get_queryset(self):
         qs = ProductoGas.objects.all()
@@ -1654,9 +1740,14 @@ class ProductoGasViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class PedidoGasViewSet(viewsets.ModelViewSet):
+class PedidoGasViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = PedidoGasSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Pedido de Gas'
+
+    def historial_descripcion(self, instance):
+        empresa = instance.cliente.empresa.nombre if instance.cliente.empresa else instance.cliente.username
+        return f"Gas Licuado — {empresa}"
 
     def get_queryset(self):
         user = self.request.user
@@ -1782,9 +1873,14 @@ class ResumenClienteView(APIView):
 
         return Response({'maestranza': maestranza, 'arriendos': arriendos})
 
-class CotizacionViewSet(viewsets.ModelViewSet):
+class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = CotizacionSerializer
     permission_classes = [EsAdmin]
+    historial_tipo = 'Cotización'
+
+    def historial_descripcion(self, instance):
+        nombre = instance.empresa.nombre if instance.empresa else (instance.mandante or 'Sin empresa')
+        return f"Folio {instance.folio} — {nombre}"
 
     def get_queryset(self):
         return Cotizacion.objects.select_related('trabajo', 'empresa').all()
@@ -1940,9 +2036,13 @@ class CotizacionViewSet(viewsets.ModelViewSet):
 
         return Response({'ok': True})
 
-class TareaAgendaViewSet(viewsets.ModelViewSet):
+class TareaAgendaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = TareaAgendaSerializer
     permission_classes = [permissions.IsAuthenticated]
+    historial_tipo = 'Tarea de agenda'
+
+    def historial_descripcion(self, instance):
+        return f"{instance.titulo} ({instance.fecha:%d-%m-%Y})"
 
     def get_queryset(self):
         user = self.request.user
@@ -2008,3 +2108,16 @@ def guardar_push_subscription(request):
         }
     )
     return Response({'status': 'ok'})
+
+class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
+    """Solo lectura: el historial no se edita ni se borra desde la app."""
+    queryset = HistorialEliminacion.objects.select_related('eliminado_por').all()
+    serializer_class = HistorialEliminacionSerializer
+    permission_classes = [EsAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tipo = self.request.query_params.get('tipo')
+        if tipo:
+            qs = qs.filter(tipo=tipo)
+        return qs

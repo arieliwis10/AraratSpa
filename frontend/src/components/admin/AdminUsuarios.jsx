@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { getUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario, getEmpresas } from '../../api/usuarios'
 import FormularioUsuario from '../FormularioUsuario'
 import AdminEmpresas from './AdminEmpresas'
+import HistorialEliminaciones from './HistorialEliminaciones'
 
 export default function AdminUsuarios() {
   const [usuarios, setUsuarios] = useState([])
   const [empresas, setEmpresas] = useState([])
   const [mostrarForm, setMostrarForm] = useState(false)
   const [mostrarEmpresas, setMostrarEmpresas] = useState(false)
+  const [mostrarHistorial, setMostrarHistorial] = useState(false)
   const [editando, setEditando] = useState(null)
   const [filtroRol, setFiltroRol] = useState('TODOS')
   const [filtroEmpresa, setFiltroEmpresa] = useState('TODAS')
@@ -83,6 +85,20 @@ export default function AdminUsuarios() {
     )
   }
 
+  if (mostrarHistorial) {
+    return (
+      <div className="flex flex-col gap-4">
+        <button
+          onClick={() => setMostrarHistorial(false)}
+          className="inline-block bg-white rounded-lg shadow px-3 py-1.5 text-primary text-sm font-medium hover:underline w-fit"
+        >
+          ← Volver a usuarios
+        </button>
+        <HistorialEliminaciones />
+      </div>
+    )
+  }
+
   if (mostrarForm) {
     return (
       <FormularioUsuario
@@ -124,7 +140,13 @@ export default function AdminUsuarios() {
           </select>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setMostrarHistorial(true)}
+            className="bg-danger text-white px-4 py-2 rounded hover:opacity-90 font-medium whitespace-nowrap"
+          >
+            Historial de eliminados
+          </button>
           <button
             onClick={() => setMostrarEmpresas(true)}
             className="bg-dark text-white px-4 py-2 rounded hover:bg-dark-soft font-medium whitespace-nowrap"

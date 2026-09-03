@@ -718,3 +718,26 @@ class PushSubscription(models.Model):
 
     class Meta:
         verbose_name = "Suscripción Push"
+
+class HistorialEliminacion(models.Model):
+    """
+    Registro de auditoría: cada vez que se elimina algo desde la app queda
+    una fila acá, con quién lo eliminó y cuándo. Es de solo lectura desde
+    el sistema (no se edita ni se borra desde la app).
+    """
+    tipo = models.CharField(max_length=50)
+    descripcion = models.CharField(max_length=255)
+    detalle = models.JSONField(default=dict, blank=True)
+    eliminado_por = models.ForeignKey(
+        'Usuario', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='eliminaciones_realizadas'
+    )
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-fecha']
+        verbose_name = 'Historial de eliminación'
+        verbose_name_plural = 'Historial de eliminaciones'
+
+    def __str__(self):
+        return f"{self.tipo}: {self.descripcion}"
