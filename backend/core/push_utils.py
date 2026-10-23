@@ -2,6 +2,7 @@ import os
 import json
 from pywebpush import webpush, WebPushException
 from .models import PushSubscription
+from .background import en_segundo_plano
 
 def _calcular_badge_count(usuario):
     from django.db import models as dj_models
@@ -47,6 +48,7 @@ def _calcular_badge_count(usuario):
 
     return 0
 
+@en_segundo_plano
 def enviar_push(usuario, titulo, cuerpo, url='/'):
     suscripciones = PushSubscription.objects.filter(usuario=usuario)
     if not suscripciones.exists():

@@ -170,9 +170,10 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'categoria', 'categoria_display', 'descripcion', 'centro_costo', 'foto', 'fotos',
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
-            'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible'
+            'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible',
+            'fecha_termino',
         ]
-        read_only_fields = ['cliente', 'correlativo']
+        read_only_fields = ['cliente', 'correlativo', 'fecha_termino']
 
     def validate(self, data):
         # Solo exige responsable al crear un trabajo nuevo (no al editar/actualizar uno existente)
@@ -353,7 +354,11 @@ class CotizacionSerializer(serializers.ModelSerializer):
             return None
         if obj.empresa.email:
             return obj.empresa.email
-        cliente = obj.empresa.clientes.exclude(email='').exclude(email__isnull=True).first()
+        # Se filtra en Python (no con .exclude()) para aprovechar el
+        # prefetch_related('empresa__clientes') del ViewSet; ordenado por pk
+        # igual que hacía .first().
+        clientes = sorted(obj.empresa.clientes.all(), key=lambda c: c.pk)
+        cliente = next((c for c in clientes if c.email), None)
         return cliente.email if cliente else None
 
 

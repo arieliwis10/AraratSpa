@@ -71,6 +71,10 @@ if os.environ.get('DB_ENGINE') == 'mysql':
             'PASSWORD': os.environ.get('DB_PASSWORD', '').strip(),
             'HOST': os.environ.get('DB_HOST', 'localhost').strip(),
             'PORT': os.environ.get('DB_PORT', '3306').strip(),
+            # Reutiliza la conexión a MySQL entre peticiones en vez de abrir
+            # una nueva cada vez; CONN_HEALTH_CHECKS descarta las que MySQL cerró.
+            'CONN_MAX_AGE': 60,
+            'CONN_HEALTH_CHECKS': True,
             'OPTIONS': {
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             }

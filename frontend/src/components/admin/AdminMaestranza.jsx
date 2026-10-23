@@ -19,6 +19,22 @@ const CATEGORIAS_FORMULARIO = CATEGORIAS.filter(
   (c) => c.valor !== 'INSUMOS' && c.valor !== 'REPUESTOS'
 )
 
+function formatearFecha(iso) {
+  return new Date(iso).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+// Fechas de creación y término (avance al 100%) del trabajo; solo se muestran en el panel admin.
+function FechasTrabajo({ trabajo }) {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500 mt-1">
+      <span>📅 Creado: {formatearFecha(trabajo.created_at)}</span>
+      {trabajo.fecha_termino && (
+        <span className="text-green-700">🏁 Terminado: {formatearFecha(trabajo.fecha_termino)}</span>
+      )}
+    </div>
+  )
+}
+
 function FormularioMaterialAdmin({ trabajoId, onAgregar }) {
   const [nombre, setNombre] = useState('')
   const [cantidad, setCantidad] = useState('')
@@ -685,6 +701,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
                           <p className="text-sm text-gray-600">{t.empresa_nombre || t.cliente_nombre}</p>
                           <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
+                          <FechasTrabajo trabajo={t} />
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
@@ -914,6 +931,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                       <span>Avance: {t.avance}%</span>
                       {t.tiempo_entrega && <span>Entrega: {t.tiempo_entrega}</span>}
                     </div>
+                    <FechasTrabajo trabajo={t} />
                     {t.estado === 'PENDIENTE' && !t.asignado_a && (
                       <p className="text-xs text-primary font-medium mt-1">🧑‍🔧 Sin trabajador asignado</p>
                     )}

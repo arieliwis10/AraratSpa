@@ -89,10 +89,24 @@ class TrabajoMaestranza(models.Model):
     motivo_retraso = models.TextField(blank=True)
     fecha_retraso = models.DateTimeField(null=True, blank=True)
 
+    # Momento en que el avance llegó a 100% (o se marcó Terminado). Se
+    # calcula solo en save(), así cubre todos los caminos: trabajador,
+    # "marcar completado" y edición del admin.
+    fecha_termino = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        terminado = self.avance >= 100 or self.estado == self.Estado.TERMINADO
+        if terminado and not self.fecha_termino:
+            self.fecha_termino = timezone.now()
+        elif not terminado:
+            self.fecha_termino = None
+        # save(update_fields=[...]) no guardaría fecha_termino si no viene en la lista.
+        if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'fecha_termino'}
+
         if not self.correlativo:
             empresa = self.cliente.empresa
             if empresa:
@@ -444,6 +458,31 @@ class ProductoFlexible(models.Model):
     @property
     def stock_bajo(self):
         return self.stock_actual <= self.stock_minimo
+
+    @staticmethod
+    def valor_diametro(texto):
+        """
+        Convierte el diámetro en pulgadas a número para ordenar de menor a
+        mayor: '1/4"' -> 0.25, '1"' -> 1, '1 1/4"' o '1-1/4"' -> 1.25.
+        Lo que no se pueda leer queda al final.
+        """
+        limpio = (texto or '').replace('"', '').replace("''", '').replace(',', '.').strip()
+        try:
+            total = 0.0
+            for parte in limpio.replace('-', ' ').split():
+                if '/' in parte:
+                    num, den = parte.split('/')
+                    total += float(num) / float(den)
+                else:
+                    total += float(parte)
+            return total if limpio else float('inf')
+        except (ValueError, ZeroDivisionError):
+            return float('inf')
+
+    def clave_orden(self):
+        # Categoría, luego nombre (R1 antes que R2) y luego diámetro numérico.
+        # El ordering de Meta ordena el diámetro como texto ('1"' < '1/2"' < '1/4"').
+        return (self.categoria, self.nombre.casefold(), self.valor_diametro(self.diametro), self.diametro)
 
 
 class FlexibleDetalle(models.Model):

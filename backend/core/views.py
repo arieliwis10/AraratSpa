@@ -26,6 +26,7 @@ from .serializers import (
     CotizacionSerializer, TareaAgendaSerializer, CategoriaMaquinaSerializer, HistorialEliminacionSerializer
 )
 from .push_utils import enviar_push
+from .background import en_segundo_plano
 
 
 class EsAdmin(permissions.BasePermission):
@@ -77,7 +78,7 @@ LOGO_URL = 'https://araratchile.com/wp-content/uploads/2023/02/Logos-16-1536x521
 # El "reply_to" es la cuenta a la que le debe llegar si el destinatario responde el correo.
 FERRETERIA_INSUMOS_FROM_EMAIL = 'notificaciones@araratchile.com'  # usado como reply_to
 FERRETERIA_INSUMOS_JEFE_EMAIL = 'ventasapp@araratchile.com'
-FERRETERIA_INSUMOS_VENDEDOR_EMAIL = 'ariel_18gol@hotmail.com'
+FERRETERIA_INSUMOS_VENDEDOR_EMAIL = 'fdonoso@aco.cl'
 
 FACTURACION_EMAIL = 'facturacionapp@araratchile.com'
 
@@ -89,6 +90,7 @@ def health_check(request):
     return JsonResponse({"status": "ok"})
 
 
+@en_segundo_plano
 def _notificar_admins_push(titulo, cuerpo, url='/admin'):
     """
     Manda un push a todos los usuarios ADMIN que tengan al menos una
@@ -100,6 +102,7 @@ def _notificar_admins_push(titulo, cuerpo, url='/admin'):
         enviar_push(admin, titulo, cuerpo, url)
 
 
+@en_segundo_plano
 def _notificar_responsables(trabajo):
     """
     Envía un correo (HTML + texto plano) al email de la empresa y a todos
@@ -246,6 +249,7 @@ def _notificar_responsables(trabajo):
             '/cliente'
         )
 
+@en_segundo_plano
 def _notificar_reserva_maquina(reserva):
     """
     Envía un correo al cliente que hizo la reserva y al responsable
@@ -372,6 +376,7 @@ def _notificar_reserva_maquina(reserva):
         '/admin'
     )
 
+@en_segundo_plano
 def _notificar_reserva_aprobada(reserva):
     """
     Envía un correo al cliente y al responsable cuando el admin aprueba
@@ -605,6 +610,7 @@ def _enviar_correo_pedido(pedido, destinatarios, asunto, mostrar_precio, reply_t
     email.send(fail_silently=False)
 
 
+@en_segundo_plano
 def _notificar_pedido_ferreteria(pedido):
     """
     Envía la(s) notificación(es) de un pedido nuevo. El remitente técnico
@@ -612,11 +618,11 @@ def _notificar_pedido_ferreteria(pedido):
     pasar SPF/DKIM; el "Responder a" queda con la cuenta correspondiente:
 
     - Ferretería Industrial (INSUMOS): DOS correos, ambos con
-      reply_to=soldadurasararat@gmail.com:
+      reply_to=notificaciones@araratchile.com:
         1) a ventasapp@araratchile.com, con producto/sku/cantidad/precio + total
-        2) a ariel_18gol@hotmail.com (vendedor), con producto/sku/cantidad, sin precio
-    - Repuestos industriales (REPUESTOS): un solo correo, reply_to=ventasapp@araratchile.com,
-      a soldadurasararat@gmail.com, con la tabla completa.
+        2) a fdonoso@aco.cl (vendedor), con producto/sku/cantidad, sin precio
+    - Repuestos industriales (REPUESTOS): un solo correo, reply_to=notificaciones@araratchile.com,
+      a ventasrepuestos@araratchile.com, con la tabla completa.
     """
     categoria_label = pedido.get_categoria_display()
     empresa = pedido.cliente.empresa
@@ -652,7 +658,7 @@ def _notificar_pedido_ferreteria(pedido):
 
 
 class EmpresaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
-    queryset = Empresa.objects.all()
+    queryset = Empresa.objects.prefetch_related('responsables')
     serializer_class = EmpresaSerializer
     permission_classes = [permissions.IsAuthenticated]
     historial_tipo = 'Empresa'
@@ -693,7 +699,7 @@ class ResponsableViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
 
 class UsuarioViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
-    queryset = Usuario.objects.all()
+    queryset = Usuario.objects.select_related('empresa')
     permission_classes = [EsAdmin]
     historial_tipo = 'Usuario'
 
@@ -713,6 +719,7 @@ class UsuarioViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@en_segundo_plano
 def _notificar_nuevo_trabajo(trabajo):
     """
     Envía un correo a todos los admins con email cargado cuando un cliente
@@ -810,6 +817,7 @@ def _notificar_nuevo_trabajo(trabajo):
     )
 
 
+@en_segundo_plano
 def _notificar_trabajo_aprobado(trabajo):
     """
     Envía un correo al cliente y al responsable del trabajo cuando el admin
@@ -911,6 +919,7 @@ def _notificar_trabajo_aprobado(trabajo):
         )
 
 
+@en_segundo_plano
 def _notificar_comentario_admin(trabajo, comentario):
     """
     Correo a los admins cuando el CLIENTE agrega un comentario a un trabajo
@@ -952,6 +961,7 @@ def _notificar_comentario_admin(trabajo, comentario):
     )
 
 
+@en_segundo_plano
 def _notificar_completado_admin(trabajo):
     """Correo a los admins cuando un trabajo se marca como Terminado."""
     destinatarios = list(
@@ -988,6 +998,7 @@ def _notificar_completado_admin(trabajo):
     )
 
 
+@en_segundo_plano
 def _notificar_modalidad_admin(trabajo):
     """Correo a los admins cuando el cliente elige retiro/despacho."""
     destinatarios = list(
@@ -1068,15 +1079,29 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = TrabajoMaestranza.objects.select_related(
+            'cliente__empresa', 'responsable', 'asignado_a',
+            'detalle_flexible__manguera', 'detalle_flexible__terminal_entrada',
+            'detalle_flexible__terminal_salida', 'detalle_flexible__ferula',
+        )
+        # El prefetch solo al leer: las acciones que agregan fotos/materiales/
+        # comentarios y luego devuelven el trabajo verían el caché sin lo nuevo.
+        if self.action in ('list', 'retrieve'):
+            qs = qs.prefetch_related(
+                'materiales', 'fotos',
+                models.Prefetch(
+                    'comentarios',
+                    queryset=ComentarioTrabajo.objects.select_related('autor', 'responsable'),
+                ),
+            )
         if user.rol == 'ADMIN':
-            qs = TrabajoMaestranza.objects.all()
             empresa_id = self.request.query_params.get('empresa')
             if empresa_id:
                 qs = qs.filter(cliente__empresa_id=empresa_id)
             return qs.order_by('-created_at')
         elif user.rol == 'TRABAJADOR':
-            return TrabajoMaestranza.objects.filter(asignado_a=user).order_by('-created_at')
-        return TrabajoMaestranza.objects.filter(cliente=user).order_by('-created_at')
+            return qs.filter(asignado_a=user).order_by('-created_at')
+        return qs.filter(cliente=user).order_by('-created_at')
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
@@ -1361,11 +1386,12 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = SolicitudMaterial.objects.select_related('trabajo__cliente__empresa', 'solicitante')
         if user.rol == 'ADMIN':
-            return SolicitudMaterial.objects.all().order_by('-created_at')
+            return qs.order_by('-created_at')
         elif user.rol == 'TRABAJADOR':
             from django.db.models import Q
-            return SolicitudMaterial.objects.filter(
+            return qs.filter(
                 Q(trabajo__asignado_a=user) | Q(solicitante=user)
             ).order_by('-created_at')
         return SolicitudMaterial.objects.none()
@@ -1449,7 +1475,7 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
 
 
 class MaquinaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
-    queryset = Maquina.objects.all()
+    queryset = Maquina.objects.select_related('categoria_fk')
     serializer_class = MaquinaSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -1519,13 +1545,13 @@ class ReservaMaquinaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = ReservaMaquina.objects.select_related('maquina', 'cliente__empresa', 'responsable')
         if user.rol == 'ADMIN':
-            qs = ReservaMaquina.objects.all()
             cliente_id = self.request.query_params.get('cliente')
             if cliente_id:
                 qs = qs.filter(cliente_id=cliente_id)
             return qs.order_by('-created_at')
-        return ReservaMaquina.objects.filter(cliente=user).order_by('-created_at')
+        return qs.filter(cliente=user).order_by('-created_at')
 
     def perform_create(self, serializer):
         from django.utils import timezone
@@ -1640,13 +1666,15 @@ class PedidoFerreteriaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = PedidoFerreteria.objects.select_related(
+            'cliente__empresa', 'responsable'
+        ).prefetch_related('items')
         if user.rol == 'ADMIN':
-            qs = PedidoFerreteria.objects.all()
             categoria = self.request.query_params.get('categoria')
             if categoria:
                 qs = qs.filter(categoria=categoria)
             return qs
-        return PedidoFerreteria.objects.filter(cliente=user)
+        return qs.filter(cliente=user)
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
@@ -1730,6 +1758,12 @@ class ProductoFlexibleViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
             qs = qs.filter(categoria=categoria)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # Orden en Python: el diámetro es texto ('1/4"', '1"') y la base de
+        # datos no lo puede ordenar de menor a mayor.
+        productos = sorted(self.filter_queryset(self.get_queryset()), key=ProductoFlexible.clave_orden)
+        return Response(self.get_serializer(productos, many=True).data)
+
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [EsAdmin()]
@@ -1737,7 +1771,10 @@ class ProductoFlexibleViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def stock_bajo(self, request):
-        productos = ProductoFlexible.objects.filter(stock_actual__lte=models.F('stock_minimo'))
+        productos = sorted(
+            ProductoFlexible.objects.filter(stock_actual__lte=models.F('stock_minimo')),
+            key=ProductoFlexible.clave_orden,
+        )
         serializer = self.get_serializer(productos, many=True)
         return Response(serializer.data)
 
@@ -1778,9 +1815,12 @@ class PedidoGasViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        qs = PedidoGas.objects.select_related(
+            'cliente__empresa', 'responsable'
+        ).prefetch_related('items')
         if user.rol == 'ADMIN':
-            return PedidoGas.objects.all()
-        return PedidoGas.objects.filter(cliente=user)
+            return qs
+        return qs.filter(cliente=user)
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
@@ -1910,7 +1950,9 @@ class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         return f"Folio {instance.folio} — {nombre}"
 
     def get_queryset(self):
-        return Cotizacion.objects.select_related('trabajo', 'empresa').all()
+        return Cotizacion.objects.select_related(
+            'trabajo', 'empresa', 'reserva_maquina__maquina', 'pedido_ferreteria'
+        ).prefetch_related('empresa__clientes')
 
     def _resolver_empresa(self, serializer, instance=None):
         empresa = serializer.validated_data.get('empresa')
@@ -2073,10 +2115,11 @@ class TareaAgendaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        base = TareaAgenda.objects.select_related('asignado_a', 'trabajo__cliente__empresa')
         if user.rol == 'ADMIN':
-            qs = TareaAgenda.objects.all()
+            qs = base
         elif user.rol == 'TRABAJADOR':
-            qs = TareaAgenda.objects.filter(asignado_a=user)
+            qs = base.filter(asignado_a=user)
         else:
             return TareaAgenda.objects.none()
 
