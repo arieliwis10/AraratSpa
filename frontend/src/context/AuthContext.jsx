@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import api from '../api/axios'
+import { limpiarCacheUsuarios } from '../api/usuarios'
 
 const AuthContext = createContext(null)
 
@@ -35,6 +36,7 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    limpiarCacheUsuarios()
     setUsuario(null)
   }
 

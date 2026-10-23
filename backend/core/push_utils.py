@@ -1,6 +1,5 @@
 import os
 import json
-from pywebpush import webpush, WebPushException
 from .models import PushSubscription
 from .background import en_segundo_plano
 
@@ -53,6 +52,11 @@ def enviar_push(usuario, titulo, cuerpo, url='/'):
     suscripciones = PushSubscription.objects.filter(usuario=usuario)
     if not suscripciones.exists():
         return
+
+    # Import diferido: pywebpush (y aiohttp, que arrastra) es más de la mitad
+    # del tiempo de carga de la API. Importarlo arriba hace más lento cada
+    # arranque de un proceso nuevo en el hosting, aunque no se mande ningún push.
+    from pywebpush import webpush, WebPushException
 
     vapid_private_key = os.environ.get('VAPID_PRIVATE_KEY', '').strip()
     vapid_claims = {
