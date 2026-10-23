@@ -155,6 +155,10 @@ export default function DashboardTrabajador() {
     return productosFlexibles.filter((p) => p.categoria === 'FERULA' && p.diametro === diametro)
   }
 
+  function prensadosPorDiametro(diametro) {
+    return productosFlexibles.filter((p) => p.categoria === 'PRENSADO' && p.diametro === diametro)
+  }
+
   function diametroDeManguera(mangueraId) {
     return productosFlexibles.find((p) => String(p.id) === String(mangueraId))?.diametro || ''
   }
@@ -170,6 +174,7 @@ export default function DashboardTrabajador() {
           terminal_entrada: existente.terminal_entrada || '',
           terminal_salida: existente.terminal_salida || '',
           ferula: existente.ferula || '',
+          prensado: existente.prensado || '',
           cantidad_ferulas: existente.cantidad_ferulas || 2,
         },
       }))
@@ -180,6 +185,7 @@ export default function DashboardTrabajador() {
     const diametro = mangueraDefault?.diametro || ''
     const terminalDefault = terminalesPorDiametro(diametro)[0]?.id || ''
     const ferulaDefault = ferulasPorDiametro(diametro)[0]?.id || ''
+    const prensadoDefault = prensadosPorDiametro(diametro)[0]?.id || ''
 
     setFlexibleForm((prev) => ({
       ...prev,
@@ -189,6 +195,7 @@ export default function DashboardTrabajador() {
         terminal_entrada: terminalDefault,
         terminal_salida: terminalDefault,
         ferula: ferulaDefault,
+        prensado: prensadoDefault,
         cantidad_ferulas: 2,
       },
     }))
@@ -223,6 +230,7 @@ export default function DashboardTrabajador() {
       terminal_entrada: data.terminal_entrada || null,
       terminal_salida: data.terminal_salida || null,
       ferula: data.ferula,
+      prensado: data.prensado || null,
       cantidad_ferulas: data.cantidad_ferulas,
     }
 
@@ -456,6 +464,7 @@ export default function DashboardTrabajador() {
                                           const diametro = diametroDeManguera(mangueraId)
                                           const terminalDefault = terminalesPorDiametro(diametro)[0]?.id || ''
                                           const ferulaDefault = ferulasPorDiametro(diametro)[0]?.id || ''
+                                          const prensadoDefault = prensadosPorDiametro(diametro)[0]?.id || ''
                                           setFlexibleForm({
                                             ...flexibleForm,
                                             [t.id]: {
@@ -464,6 +473,7 @@ export default function DashboardTrabajador() {
                                               terminal_entrada: terminalDefault,
                                               terminal_salida: flexibleForm[t.id].cantidad_ferulas === 2 ? terminalDefault : '',
                                               ferula: ferulaDefault,
+                                              prensado: prensadoDefault,
                                             },
                                           })
                                         }}
@@ -522,6 +532,22 @@ export default function DashboardTrabajador() {
                                         )}
                                         {ferulasPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((f) => (
                                           <option key={f.id} value={f.id}>{f.nombre} {f.diametro}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div>
+                                      <label className="block text-xs font-medium mb-1 text-dark">
+                                        Prensado (× {flexibleForm[t.id].cantidad_ferulas})
+                                      </label>
+                                      <select
+                                        value={flexibleForm[t.id].prensado}
+                                        onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], prensado: e.target.value } })}
+                                        className="w-full border rounded p-2 text-sm"
+                                      >
+                                        <option value="">Sin prensado</option>
+                                        {prensadosPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((p) => (
+                                          <option key={p.id} value={p.id}>{p.nombre} {p.diametro}</option>
                                         ))}
                                       </select>
                                     </div>

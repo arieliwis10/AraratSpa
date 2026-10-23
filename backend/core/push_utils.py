@@ -18,9 +18,7 @@ def _calcular_badge_count(usuario):
         solicitudes_por_revisar = SolicitudMaterial.objects.filter(estado='REVISION').count()
         comentarios_sin_ver = ComentarioTrabajo.objects.filter(visto_admin=False).count()
         ferreteria = PedidoFerreteria.objects.filter(estado=PedidoFerreteria.Estado.PENDIENTE).count()
-        flexibles = ProductoFlexible.objects.filter(
-            activo=True, stock_actual__lte=dj_models.F('stock_minimo')
-        ).count()
+        flexibles = ProductoFlexible.con_stock_bajo().filter(activo=True).count()
         maquinas = ReservaMaquina.objects.filter(estado=ReservaMaquina.Estado.PENDIENTE).count()
         compras = SolicitudMaterial.objects.filter(estado='PENDIENTE').count()
 

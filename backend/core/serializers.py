@@ -114,6 +114,7 @@ class FlexibleDetalleSerializer(serializers.ModelSerializer):
     terminal_entrada_info = ProductoFlexibleSerializer(source='terminal_entrada', read_only=True)
     terminal_salida_info = ProductoFlexibleSerializer(source='terminal_salida', read_only=True)
     ferula_info = ProductoFlexibleSerializer(source='ferula', read_only=True)
+    prensado_info = ProductoFlexibleSerializer(source='prensado', read_only=True)
 
     class Meta:
         model = FlexibleDetalle
@@ -123,6 +124,7 @@ class FlexibleDetalleSerializer(serializers.ModelSerializer):
             'terminal_entrada', 'terminal_entrada_info',
             'terminal_salida', 'terminal_salida_info',
             'ferula', 'ferula_info',
+            'prensado', 'prensado_info',
             'cantidad_ferulas', 'precio_total', 'precio_sugerido',
         ]
         read_only_fields = ['trabajo']

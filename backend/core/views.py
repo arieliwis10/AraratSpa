@@ -1083,6 +1083,7 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
             'cliente__empresa', 'responsable', 'asignado_a',
             'detalle_flexible__manguera', 'detalle_flexible__terminal_entrada',
             'detalle_flexible__terminal_salida', 'detalle_flexible__ferula',
+            'detalle_flexible__prensado',
         )
         # El prefetch solo al leer: las acciones que agregan fotos/materiales/
         # comentarios y luego devuelven el trabajo verían el caché sin lo nuevo.
@@ -1771,10 +1772,7 @@ class ProductoFlexibleViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def stock_bajo(self, request):
-        productos = sorted(
-            ProductoFlexible.objects.filter(stock_actual__lte=models.F('stock_minimo')),
-            key=ProductoFlexible.clave_orden,
-        )
+        productos = sorted(ProductoFlexible.con_stock_bajo(), key=ProductoFlexible.clave_orden)
         serializer = self.get_serializer(productos, many=True)
         return Response(serializer.data)
 
@@ -1905,9 +1903,7 @@ class ResumenPendientesView(APIView):
             'ferreteria': PedidoFerreteria.objects.filter(
                 estado=PedidoFerreteria.Estado.PENDIENTE
             ).count(),
-            'flexibles': ProductoFlexible.objects.filter(
-                activo=True, stock_actual__lte=models.F('stock_minimo')
-            ).count(),
+            'flexibles': ProductoFlexible.con_stock_bajo().filter(activo=True).count(),
             'maquinas': ReservaMaquina.objects.filter(
                 estado=ReservaMaquina.Estado.PENDIENTE
             ).count(),

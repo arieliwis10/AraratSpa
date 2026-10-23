@@ -81,12 +81,16 @@ function ProductosFlexibles() {
       alert('Escribe el nombre del producto (ej: R1, JIC, Hembra Recto...)')
       return
     }
-    if (!form.precio || form.stock_actual === '') {
-      alert('Completa precio y stock')
+    const info = categoriaInfo(form.categoria)
+    if (!form.precio || (!info.sinStock && form.stock_actual === '')) {
+      alert(info.sinStock ? 'Completa el precio' : 'Completa precio y stock')
       return
     }
-    const info = categoriaInfo(form.categoria)
     const payload = { ...form, unidad_medida: info.unidad }
+    if (info.sinStock) {
+      payload.stock_actual = 0
+      payload.stock_minimo = 0
+    }
     try {
       if (editandoId) {
         await actualizarProductoFlexible(editandoId, payload)
@@ -175,7 +179,7 @@ function ProductosFlexibles() {
                 <label className="block text-xs font-medium mb-1 text-dark">Nombre</label>
                 <input
                   type="text"
-                  placeholder="Ej: R1, JIC, Hembra Recto..."
+                  placeholder="Ej: R1, Macho Recto, 45, Prensado..."
                   value={form.nombre}
                   onChange={(e) => setForm({ ...form, nombre: e.target.value })}
                   className="w-full border rounded p-2 text-sm"
@@ -201,23 +205,32 @@ function ProductosFlexibles() {
                   className="w-full border rounded p-2 text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-dark">Stock actual</label>
-                <input
-                  type="number" value={form.stock_actual}
-                  onChange={(e) => setForm({ ...form, stock_actual: e.target.value })}
-                  className="w-full border rounded p-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1 text-dark">Stock mínimo</label>
-                <input
-                  type="number" value={form.stock_minimo}
-                  onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })}
-                  className="w-full border rounded p-2 text-sm"
-                />
-              </div>
+              {!categoriaInfo(form.categoria)?.sinStock && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-dark">Stock actual</label>
+                    <input
+                      type="number" value={form.stock_actual}
+                      onChange={(e) => setForm({ ...form, stock_actual: e.target.value })}
+                      className="w-full border rounded p-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1 text-dark">Stock mínimo</label>
+                    <input
+                      type="number" value={form.stock_minimo}
+                      onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })}
+                      className="w-full border rounded p-2 text-sm"
+                    />
+                  </div>
+                </>
+              )}
             </div>
+            {categoriaInfo(form.categoria)?.sinStock && (
+              <p className="text-xs text-gray-500 mt-2">
+                El prensado es un servicio: no lleva stock. Se cobra una vez por cada extremo prensado del flexible.
+              </p>
+            )}
             <div className="flex gap-2 mt-3">
               <button
                 onClick={handleGuardar}
@@ -270,7 +283,9 @@ function ProductosFlexibles() {
                   {p.nombre} {p.diametro}
                 </p>
                 <p className="text-xs text-gray-500">
-                  ${Number(p.precio).toLocaleString('es-CL')} · Stock: {p.stock_actual} {p.unidad_medida === 'METRO' ? 'm' : 'un'}
+                  ${Number(p.precio).toLocaleString('es-CL')} · {categoriaInfo(p.categoria)?.sinStock
+                    ? 'Servicio (por extremo)'
+                    : `Stock: ${p.stock_actual} ${p.unidad_medida === 'METRO' ? 'm' : 'un'}`}
                   {p.stock_bajo && <span className="text-danger font-bold"> · ⚠️ Stock bajo</span>}
                 </p>
               </div>
@@ -376,6 +391,7 @@ function PedidosFlexibles() {
                 </span>
               )}
               <span>Férula: {d.ferula_info?.nombre || '—'} · Cantidad: {d.cantidad_ferulas}</span>
+              <span>Prensado: {d.prensado_info ? `${d.prensado_info.nombre} × ${d.cantidad_ferulas}` : '—'}</span>
             </div>
 
             <div className="flex items-end gap-3">

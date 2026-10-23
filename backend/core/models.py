@@ -428,6 +428,10 @@ class ProductoFlexible(models.Model):
         MANGUERA = 'MANGUERA', 'Manguera'
         TERMINAL = 'TERMINAL', 'Terminal'
         FERULA = 'FERULA', 'Férula'
+        PRENSADO = 'PRENSADO', 'Prensado'
+
+    # Servicios: tienen precio pero no stock (no se descuentan ni dan alerta de stock bajo).
+    CATEGORIAS_SIN_STOCK = [Categoria.PRENSADO]
 
     class Unidad(models.TextChoices):
         METRO = 'METRO', 'Metro'
@@ -457,7 +461,15 @@ class ProductoFlexible(models.Model):
 
     @property
     def stock_bajo(self):
+        if self.categoria in self.CATEGORIAS_SIN_STOCK:
+            return False
         return self.stock_actual <= self.stock_minimo
+
+    @classmethod
+    def con_stock_bajo(cls):
+        return cls.objects.filter(
+            stock_actual__lte=models.F('stock_minimo')
+        ).exclude(categoria__in=cls.CATEGORIAS_SIN_STOCK)
 
     @staticmethod
     def valor_diametro(texto):
@@ -507,6 +519,11 @@ class FlexibleDetalle(models.Model):
         related_name='detalles_ferula'
     )
     cantidad_ferulas = models.PositiveSmallIntegerField(choices=[(1, '1'), (2, '2')], default=2)
+    # Servicio de prensado: se cobra una vez por cada extremo (= cantidad_ferulas).
+    prensado = models.ForeignKey(
+        ProductoFlexible, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='detalles_prensado'
+    )
     precio_total = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     # Evita descontar el stock dos veces si el trabajo se re-guarda
@@ -582,6 +599,9 @@ class FlexibleDetalle(models.Model):
 
         if self.ferula:
             total += self.ferula.precio * self.cantidad_ferulas
+
+        if self.prensado:
+            total += self.prensado.precio * self.cantidad_ferulas
 
         return total
 
