@@ -125,10 +125,16 @@ export default function CotizacionModal({
     return cant * precio
   }
 
+  // Se redondea a 2 decimales: el backend guarda DecimalField(decimal_places=2)
+  // y rechaza con 400 floats como 39666.270000000004 (subtotal * 0.19).
+  function redondear2(valor) {
+    return Math.round(valor * 100) / 100
+  }
+
   function calcularTotales() {
-    const subtotal = items.reduce((acc, it) => acc + totalItem(it), 0)
-    const iva = subtotal * 0.19
-    const total = subtotal + iva
+    const subtotal = redondear2(items.reduce((acc, it) => acc + totalItem(it), 0))
+    const iva = redondear2(subtotal * 0.19)
+    const total = redondear2(subtotal + iva)
     return { subtotal, iva, total }
   }
 
@@ -216,8 +222,9 @@ export default function CotizacionModal({
         folio, fechaFormateada, trabajoLabel, obra, mandante, lugarTrabajo, items, notas, validezDias, marca,
       })
     } catch (err) {
-      console.error('No se pudo guardar la cotización', err)
-      alert('No se pudo guardar la cotización. Intenta de nuevo.')
+      console.error('No se pudo guardar la cotización', err, err.response?.data)
+      const detalle = err.response?.data ? `\n\n${JSON.stringify(err.response.data)}` : ''
+      alert(`No se pudo guardar la cotización. Intenta de nuevo.${detalle}`)
     } finally {
       setGuardando(false)
     }
