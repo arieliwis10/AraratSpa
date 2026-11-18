@@ -14,7 +14,7 @@ import VisorFoto from '../VisorFoto'
 import Spinner from '../Spinner'
 import { EtiquetaCotizacion } from '../EstadoCotizacionTrabajo'
 import { claseTarjetaCotizacion } from '../../utils/estadoCotizacion'
-import { MESES, mesActualISO, nombreMes, anosDisponibles } from '../../utils/meses'
+import { MESES, TODOS_LOS_MESES, mesActualISO, nombreMes, anosDisponibles, coincideMes } from '../../utils/meses'
 import FichaFlexible from '../FichaFlexible'
 import ResumenFlexible from '../ResumenFlexible'
 
@@ -577,7 +577,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   // La carpeta Terminados se muestra de a un mes (según la fecha en que se terminó)
   // para que no se acumulen todos los trabajos en una sola lista.
   const trabajosHistorialDelMes = trabajosHistorial.filter(
-    (t) => (t.fecha_termino || t.updated_at || '').slice(0, 7) === mesFiltro
+    (t) => coincideMes(t.fecha_termino || t.updated_at, mesFiltro)
   )
   const trabajosActivos = trabajos.filter((t) => t.estado !== 'TERMINADO')
   const trabajosSinAsignar = trabajosActivos.filter((t) => t.estado === 'PENDIENTE' && !t.asignado_a)
@@ -740,6 +740,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   onChange={(e) => setMesFiltro(`${mesFiltro.split('-')[0]}-${e.target.value}`)}
                   className="border rounded p-1.5 text-sm bg-white"
                 >
+                  <option value={TODOS_LOS_MESES}>Todos los meses</option>
                   {MESES.map((nombre, idx) => (
                     <option key={idx} value={String(idx + 1).padStart(2, '0')}>{nombre}</option>
                   ))}

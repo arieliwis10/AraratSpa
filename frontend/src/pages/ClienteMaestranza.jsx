@@ -13,7 +13,7 @@ import fondoPanel from '../assets/fondo-panel.jpg'
 import CarritoFerreteria from '../components/CarritoFerreteria'
 import { EtiquetaCotizacion } from '../components/EstadoCotizacionTrabajo'
 import { claseTarjetaCotizacion } from '../utils/estadoCotizacion'
-import { MESES, mesActualISO, nombreMes, anosDisponibles } from '../utils/meses'
+import { MESES, TODOS_LOS_MESES, mesActualISO, nombreMes, anosDisponibles, coincideMes } from '../utils/meses'
 
 function SelectorEntrega({ trabajo, onElegido }) {
   const [modalidad, setModalidad] = useState('RETIRO')
@@ -192,10 +192,7 @@ export default function ClienteMaestranza() {
     (t) => (t.fecha_factura || '').slice(0, 7) === mesFacturados
   )
 
-  const trabajosHistorialDelMes = trabajosHistorial.filter((t) => {
-    if (!t.updated_at) return false
-    return t.updated_at.slice(0, 7) === mesFiltro
-  })
+  const trabajosHistorialDelMes = trabajosHistorial.filter((t) => coincideMes(t.updated_at, mesFiltro))
 
   function generarPDFMes() {
     const doc = new jsPDF()
@@ -228,7 +225,7 @@ export default function ClienteMaestranza() {
 
     if (filas.length === 0) {
       doc.setFontSize(10)
-      doc.text('No hay trabajos terminados en este mes.', 14, 36)
+      doc.text('No hay trabajos terminados en este período.', 14, 36)
     }
 
     doc.save(`trabajos_realizados_${mesFiltro}.pdf`)
@@ -322,6 +319,7 @@ export default function ClienteMaestranza() {
                         onChange={(e) => setMesFiltro(`${mesFiltro.split('-')[0]}-${e.target.value}`)}
                         className="border rounded p-1.5 text-sm bg-white"
                       >
+                        <option value={TODOS_LOS_MESES}>Todos los meses</option>
                         {MESES.map((nombre, idx) => (
                           <option key={idx} value={String(idx + 1).padStart(2, '0')}>{nombre}</option>
                         ))}
