@@ -1,9 +1,11 @@
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import EmailMultiAlternatives
-from django.db import models
+from django.db import models, transaction
 from rest_framework.views import APIView
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
@@ -1089,7 +1091,7 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         # comentarios y luego devuelven el trabajo verían el caché sin lo nuevo.
         if self.action in ('list', 'retrieve'):
             qs = qs.prefetch_related(
-                'materiales', 'fotos',
+                'materiales', 'fotos', 'cotizaciones',
                 models.Prefetch(
                     'comentarios',
                     queryset=ComentarioTrabajo.objects.select_related('autor', 'responsable'),
@@ -1312,19 +1314,52 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         serializer.save()
         return Response(TrabajoMaestranzaSerializer(trabajo).data)
 
+    # Campos de la ficha que mueven stock (el precio_total no).
+    CAMPOS_STOCK_FLEXIBLE = {
+        'manguera', 'largo_metros', 'terminal_entrada', 'terminal_salida', 'ferula', 'cantidad_ferulas',
+    }
+
     @action(detail=True, methods=['post'])
     def guardar_detalle_flexible(self, request, pk=None):
         trabajo = self.get_object()
-        detalle = FlexibleDetalle.objects.filter(trabajo=trabajo).first()
+        if not self._puede_operar(request, trabajo):
+            return Response({'error': 'No autorizado'}, status=403)
 
-        if detalle:
-            serializer = FlexibleDetalleSerializer(detalle, data=request.data, partial=True)
-        else:
-            serializer = FlexibleDetalleSerializer(data={**request.data, 'trabajo': trabajo.id})
+        with transaction.atomic():
+            detalle = FlexibleDetalle.objects.select_for_update().filter(trabajo=trabajo).first()
 
-        serializer.is_valid(raise_exception=True)
-        serializer.save(trabajo=trabajo)
-        return Response(serializer.data)
+            # Si el trabajo ya se completó, el stock de la ficha anterior ya se
+            # descontó: al corregirla se devuelve ese stock y se descuenta el nuevo.
+            reajustar_stock = bool(
+                detalle and detalle.stock_descontado
+                and self.CAMPOS_STOCK_FLEXIBLE & set(request.data.keys())
+            )
+
+            if detalle:
+                serializer = FlexibleDetalleSerializer(detalle, data=request.data, partial=True)
+            else:
+                serializer = FlexibleDetalleSerializer(data={**request.data, 'trabajo': trabajo.id})
+            serializer.is_valid(raise_exception=True)
+
+            if reajustar_stock:
+                detalle.devolver_stock()
+            guardado = serializer.save(trabajo=trabajo)
+
+            if reajustar_stock:
+                guardado = FlexibleDetalle.objects.get(pk=guardado.pk)
+                faltantes = guardado.productos_faltantes()
+                if faltantes:
+                    transaction.set_rollback(True)
+                    return Response(
+                        {
+                            'error': 'No se pudo corregir la ficha: falta stock en el catálogo de Flexibles.',
+                            'productos_faltantes': faltantes,
+                        },
+                        status=400,
+                    )
+                guardado.descontar_stock()
+
+        return Response(FlexibleDetalleSerializer(guardado).data)
 
     @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def agregar_comentario(self, request, pk=None):
@@ -1971,13 +2006,69 @@ class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
         return empresa  # queda None solo si es plantilla sin empresa elegida
 
+    @staticmethod
+    def _verificar_editable(cotizacion):
+        """Corta la edición/eliminación si la cotización está bloqueada o facturada."""
+        if cotizacion.facturada:
+            raise PermissionDenied(
+                f'La cotización {cotizacion.folio} está cerrada (factura N° {cotizacion.numero_factura}) y no se puede modificar.'
+            )
+        if cotizacion.bloqueada:
+            raise PermissionDenied(
+                f'La cotización {cotizacion.folio} está bloqueada. Desbloquéala con la clave para modificarla.'
+            )
+
     def perform_create(self, serializer):
         empresa = self._resolver_empresa(serializer)
+        # Se crea bloqueada (default del modelo): generar la cotización la bloquea.
         serializer.save(empresa=empresa, creado_por=self.request.user)
 
     def perform_update(self, serializer):
+        self._verificar_editable(serializer.instance)
         empresa = self._resolver_empresa(serializer, instance=serializer.instance)
-        serializer.save(empresa=empresa)
+        # Al guardar los cambios se vuelve a generar el PDF: queda bloqueada de nuevo.
+        serializer.save(empresa=empresa, bloqueada=True)
+
+    def perform_destroy(self, instance):
+        self._verificar_editable(instance)
+        super().perform_destroy(instance)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def desbloquear(self, request, pk=None):
+        cotizacion = self.get_object()
+        if cotizacion.facturada:
+            return Response(
+                {'error': 'La cotización ya está facturada: quedó cerrada y no se puede desbloquear.'}, status=400
+            )
+        clave = request.data.get('clave') or ''
+        if not request.user.check_password(clave):
+            return Response({'error': 'Clave incorrecta.'}, status=400)
+        cotizacion.bloqueada = False
+        cotizacion.save(update_fields=['bloqueada'])
+        return Response(self.get_serializer(cotizacion).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def bloquear(self, request, pk=None):
+        cotizacion = self.get_object()
+        cotizacion.bloqueada = True
+        cotizacion.save(update_fields=['bloqueada'])
+        return Response(self.get_serializer(cotizacion).data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
+    def registrar_factura(self, request, pk=None):
+        cotizacion = self.get_object()
+        if cotizacion.facturada:
+            return Response({'error': 'Esta cotización ya tiene factura registrada.'}, status=400)
+        numero = (request.data.get('numero_factura') or '').strip()
+        if not numero:
+            return Response({'error': 'Ingresa el número de factura.'}, status=400)
+        if len(numero) > 50:
+            return Response({'error': 'El número de factura es demasiado largo.'}, status=400)
+        cotizacion.numero_factura = numero
+        cotizacion.fecha_factura = timezone.now()
+        cotizacion.bloqueada = True
+        cotizacion.save(update_fields=['numero_factura', 'fecha_factura', 'bloqueada'])
+        return Response(self.get_serializer(cotizacion).data)
 
     @action(detail=True, methods=['post'], permission_classes=[EsAdmin])
     def enviar_correo(self, request, pk=None):

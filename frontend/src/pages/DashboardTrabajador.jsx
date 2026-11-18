@@ -8,7 +8,9 @@ import BadgeEstado from '../components/BadgeEstado'
 import VisorFoto from '../components/VisorFoto'
 import Spinner from '../components/Spinner'
 import fondoPanel from '../assets/fondo-panel.jpg'
-import { guardarDetalleFlexible, getProductosFlexibles } from '../api/maestranza'
+import { getProductosFlexibles } from '../api/maestranza'
+import FichaFlexible from '../components/FichaFlexible'
+import ResumenFlexible from '../components/ResumenFlexible'
 
 export default function DashboardTrabajador() {
   const { usuario, logout } = useAuth()
@@ -26,7 +28,6 @@ export default function DashboardTrabajador() {
   const [descripcionSolicitud, setDescripcionSolicitud] = useState('')
   const [enviandoSolicitud, setEnviandoSolicitud] = useState(false)
   const [solicitudEnviada, setSolicitudEnviada] = useState(false)
-  const [flexibleForm, setFlexibleForm] = useState({})
   const [productosFlexibles, setProductosFlexibles] = useState([])
   const [guardandoCambios, setGuardandoCambios] = useState(false)
   const [completando, setCompletando] = useState(false)
@@ -77,10 +78,6 @@ export default function DashboardTrabajador() {
   }
 
   function toggleExpandido(id) {
-    const trabajo = trabajos.find((t) => t.id === id)
-    if (trabajo?.categoria === 'FLEXIBLES' && !flexibleForm[id]) {
-      inicializarFlexible(trabajo)
-    }
     setExpandido((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
@@ -138,108 +135,6 @@ export default function DashboardTrabajador() {
       cargarTrabajos()
     } catch (err) {
       alert('Error al agregar el material')
-    }
-  }
-
-  // ---- Helpers del catálogo de Flexibles (ahora por categoría abierta, no por tipo fijo) ----
-
-  function mangueras() {
-    return productosFlexibles.filter((p) => p.categoria === 'MANGUERA')
-  }
-
-  function terminalesPorDiametro(diametro) {
-    return productosFlexibles.filter((p) => p.categoria === 'TERMINAL' && p.diametro === diametro)
-  }
-
-  function ferulasPorDiametro(diametro) {
-    return productosFlexibles.filter((p) => p.categoria === 'FERULA' && p.diametro === diametro)
-  }
-
-  function prensadosPorDiametro(diametro) {
-    return productosFlexibles.filter((p) => p.categoria === 'PRENSADO' && p.diametro === diametro)
-  }
-
-  function diametroDeManguera(mangueraId) {
-    return productosFlexibles.find((p) => String(p.id) === String(mangueraId))?.diametro || ''
-  }
-
-  function inicializarFlexible(trabajo) {
-    const existente = trabajo.detalle_flexible
-    if (existente) {
-      setFlexibleForm((prev) => ({
-        ...prev,
-        [trabajo.id]: {
-          manguera: existente.manguera || '',
-          largo_metros: existente.largo_metros || '',
-          terminal_entrada: existente.terminal_entrada || '',
-          terminal_salida: existente.terminal_salida || '',
-          ferula: existente.ferula || '',
-          prensado: existente.prensado || '',
-          cantidad_ferulas: existente.cantidad_ferulas || 2,
-        },
-      }))
-      return
-    }
-
-    const mangueraDefault = mangueras()[0]
-    const diametro = mangueraDefault?.diametro || ''
-    const terminalDefault = terminalesPorDiametro(diametro)[0]?.id || ''
-    const ferulaDefault = ferulasPorDiametro(diametro)[0]?.id || ''
-    const prensadoDefault = prensadosPorDiametro(diametro)[0]?.id || ''
-
-    setFlexibleForm((prev) => ({
-      ...prev,
-      [trabajo.id]: {
-        manguera: mangueraDefault?.id || '',
-        largo_metros: '',
-        terminal_entrada: terminalDefault,
-        terminal_salida: terminalDefault,
-        ferula: ferulaDefault,
-        prensado: prensadoDefault,
-        cantidad_ferulas: 2,
-      },
-    }))
-  }
-
-  async function handleGuardarFlexible(trabajoId) {
-    const data = flexibleForm[trabajoId]
-    if (!data.manguera) {
-      alert('Selecciona la manguera')
-      return
-    }
-    if (!data.largo_metros) {
-      alert('Indica el largo de la manguera en metros')
-      return
-    }
-    if (!data.ferula) {
-      alert('Selecciona la férula')
-      return
-    }
-    if (data.cantidad_ferulas === 2 && !(data.terminal_entrada && data.terminal_salida)) {
-      alert('Indica el terminal de entrada y de salida')
-      return
-    }
-    if (data.cantidad_ferulas === 1 && !(data.terminal_entrada || data.terminal_salida)) {
-      alert('Indica el terminal usado')
-      return
-    }
-
-    const payload = {
-      manguera: data.manguera,
-      largo_metros: data.largo_metros,
-      terminal_entrada: data.terminal_entrada || null,
-      terminal_salida: data.terminal_salida || null,
-      ferula: data.ferula,
-      prensado: data.prensado || null,
-      cantidad_ferulas: data.cantidad_ferulas,
-    }
-
-    try {
-      await guardarDetalleFlexible(trabajoId, payload)
-      alert('Ficha del flexible guardada')
-      cargarTrabajos()
-    } catch (err) {
-      alert('Error al guardar la ficha del flexible')
     }
   }
 
@@ -444,204 +339,8 @@ export default function DashboardTrabajador() {
                               </div>
                             )}
 
-                              {t.categoria === 'FLEXIBLES' && flexibleForm[t.id] && (
-                              <div className="mb-3 border rounded p-3 bg-blue-50">
-                                <p className="text-xs font-bold text-dark mb-2">🔧 Ficha técnica del flexible</p>
-
-                                {mangueras().length === 0 ? (
-                                  <p className="text-xs text-gray-600">
-                                    El admin todavía no ha cargado productos en el catálogo de Flexibles. Avísale antes de continuar.
-                                  </p>
-                                ) : (
-                                  <>
-                                    <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                      <label className="block text-xs font-medium mb-1 text-dark">Manguera</label>
-                                      <select
-                                        value={flexibleForm[t.id].manguera}
-                                        onChange={(e) => {
-                                          const mangueraId = e.target.value
-                                          const diametro = diametroDeManguera(mangueraId)
-                                          const terminalDefault = terminalesPorDiametro(diametro)[0]?.id || ''
-                                          const ferulaDefault = ferulasPorDiametro(diametro)[0]?.id || ''
-                                          const prensadoDefault = prensadosPorDiametro(diametro)[0]?.id || ''
-                                          setFlexibleForm({
-                                            ...flexibleForm,
-                                            [t.id]: {
-                                              ...flexibleForm[t.id],
-                                              manguera: mangueraId,
-                                              terminal_entrada: terminalDefault,
-                                              terminal_salida: flexibleForm[t.id].cantidad_ferulas === 2 ? terminalDefault : '',
-                                              ferula: ferulaDefault,
-                                              prensado: prensadoDefault,
-                                            },
-                                          })
-                                        }}
-                                        className="w-full border rounded p-2 text-sm"
-                                      >
-                                        {mangueras().map((m) => (
-                                          <option key={m.id} value={m.id}>{m.nombre} {m.diametro}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium mb-1 text-dark">Largo (metros)</label>
-                                      <input
-                                        type="number" step="0.1"
-                                        value={flexibleForm[t.id].largo_metros}
-                                        onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], largo_metros: e.target.value } })}
-                                        className="w-full border rounded p-2 text-sm"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium mb-1 text-dark">Cantidad férulas</label>
-                                      <select
-                                        value={flexibleForm[t.id].cantidad_ferulas}
-                                        onChange={(e) => {
-                                          const cantidad = Number(e.target.value)
-                                          const diametro = diametroDeManguera(flexibleForm[t.id].manguera)
-                                          const terminalDefault = terminalesPorDiametro(diametro)[0]?.id || ''
-                                          setFlexibleForm({
-                                            ...flexibleForm,
-                                            [t.id]: {
-                                              ...flexibleForm[t.id],
-                                              cantidad_ferulas: cantidad,
-                                              terminal_entrada: terminalDefault,
-                                              terminal_salida: cantidad === 2 ? terminalDefault : '',
-                                            },
-                                          })
-                                        }}
-                                        className="w-full border rounded p-2 text-sm"
-                                      >
-                                        <option value={1}>1 (arreglo de un lado)</option>
-                                        <option value={2}>2 (manguera completa)</option>
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium mb-1 text-dark">Férula</label>
-                                      <select
-                                        value={flexibleForm[t.id].ferula}
-                                        onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], ferula: e.target.value } })}
-                                        className="w-full border rounded p-2 text-sm"
-                                      >
-                                        {ferulasPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).length === 0 && (
-                                          <option value="">Sin férulas cargadas para este diámetro</option>
-                                        )}
-                                        {ferulasPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((f) => (
-                                          <option key={f.id} value={f.id}>{f.nombre} {f.diametro}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium mb-1 text-dark">
-                                        Prensado (× {flexibleForm[t.id].cantidad_ferulas})
-                                      </label>
-                                      <select
-                                        value={flexibleForm[t.id].prensado}
-                                        onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], prensado: e.target.value } })}
-                                        className="w-full border rounded p-2 text-sm"
-                                      >
-                                        <option value="">Sin prensado</option>
-                                        {prensadosPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((p) => (
-                                          <option key={p.id} value={p.id}>{p.nombre} {p.diametro}</option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    {flexibleForm[t.id].cantidad_ferulas === 2 ? (
-                                      <>
-                                        <div>
-                                          <label className="block text-xs font-medium mb-1 text-dark">Terminal entrada</label>
-                                          <select
-                                            value={flexibleForm[t.id].terminal_entrada}
-                                            onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], terminal_entrada: e.target.value } })}
-                                            className="w-full border rounded p-2 text-sm"
-                                          >
-                                            {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).length === 0 && (
-                                              <option value="">Sin terminales cargados</option>
-                                            )}
-                                            {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((p) => (
-                                              <option key={p.id} value={p.id}>{p.nombre}</option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium mb-1 text-dark">Terminal salida</label>
-                                          <select
-                                            value={flexibleForm[t.id].terminal_salida}
-                                            onChange={(e) => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], terminal_salida: e.target.value } })}
-                                            className="w-full border rounded p-2 text-sm"
-                                          >
-                                            {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).length === 0 && (
-                                              <option value="">Sin terminales cargados</option>
-                                            )}
-                                            {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((p) => (
-                                              <option key={p.id} value={p.id}>{p.nombre}</option>
-                                            ))}
-                                          </select>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <div className="col-span-2">
-                                        <label className="block text-xs font-medium mb-1 text-dark">¿Qué lado se repara?</label>
-                                        <div className="flex gap-2 mb-2">
-                                          <button
-                                            type="button"
-                                            onClick={() => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], terminal_entrada: flexibleForm[t.id].terminal_entrada || flexibleForm[t.id].terminal_salida, terminal_salida: '' } })}
-                                            className={`px-3 py-1.5 rounded text-xs font-medium ${flexibleForm[t.id].terminal_entrada ? 'bg-primary text-white' : 'bg-dark/10 text-dark'}`}
-                                          >
-                                            Entrada
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => setFlexibleForm({ ...flexibleForm, [t.id]: { ...flexibleForm[t.id], terminal_salida: flexibleForm[t.id].terminal_salida || flexibleForm[t.id].terminal_entrada, terminal_entrada: '' } })}
-                                            className={`px-3 py-1.5 rounded text-xs font-medium ${flexibleForm[t.id].terminal_salida ? 'bg-primary text-white' : 'bg-dark/10 text-dark'}`}
-                                          >
-                                            Salida
-                                          </button>
-                                        </div>
-                                        <label className="block text-xs font-medium mb-1 text-dark">Terminal usado</label>
-                                        <select
-                                          value={flexibleForm[t.id].terminal_entrada || flexibleForm[t.id].terminal_salida}
-                                          onChange={(e) => {
-                                            const valor = e.target.value
-                                            const esEntrada = Boolean(flexibleForm[t.id].terminal_entrada) || (!flexibleForm[t.id].terminal_entrada && !flexibleForm[t.id].terminal_salida)
-                                            setFlexibleForm({
-                                              ...flexibleForm,
-                                              [t.id]: {
-                                                ...flexibleForm[t.id],
-                                                terminal_entrada: esEntrada ? valor : '',
-                                                terminal_salida: esEntrada ? '' : valor,
-                                              },
-                                            })
-                                          }}
-                                          className="w-full border rounded p-2 text-sm"
-                                        >
-                                          {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).length === 0 && (
-                                            <option value="">Sin terminales cargados</option>
-                                          )}
-                                          {terminalesPorDiametro(diametroDeManguera(flexibleForm[t.id].manguera)).map((p) => (
-                                            <option key={p.id} value={p.id}>{p.nombre}</option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                    <button
-                                      onClick={() => handleGuardarFlexible(t.id)}
-                                      disabled={!flexibleForm[t.id].manguera || !flexibleForm[t.id].ferula}
-                                      className="mt-2 text-xs bg-primary text-white px-3 py-1.5 rounded hover:bg-primary-light disabled:opacity-50"
-                                    >
-                                      Guardar ficha del flexible
-                                    </button>
-                                  </>
-                                )}
-                              </div>
+                            {t.categoria === 'FLEXIBLES' && (
+                              <FichaFlexible trabajo={t} productos={productosFlexibles} onGuardado={cargarTrabajos} />
                             )}
 
                             {t.materiales?.length > 0 && (
@@ -832,6 +531,7 @@ export default function DashboardTrabajador() {
                             {estaExpandido && (
                               <div className="mt-3 pt-3 border-t">
                                 <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
+                                <ResumenFlexible detalle={t.detalle_flexible} mostrarPrecios={false} />
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                                   <span>Centro de costo: {t.centro_costo}</span>
                                   <span>

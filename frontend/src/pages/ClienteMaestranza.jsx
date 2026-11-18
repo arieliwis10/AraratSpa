@@ -11,29 +11,9 @@ import BadgeEstado from '../components/BadgeEstado'
 import VisorFoto from '../components/VisorFoto'
 import fondoPanel from '../assets/fondo-panel.jpg'
 import CarritoFerreteria from '../components/CarritoFerreteria'
-
-const MESES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-]
-
-function mesActualISO() {
-  const fecha = new Date()
-  const yyyy = fecha.getFullYear()
-  const mm = String(fecha.getMonth() + 1).padStart(2, '0')
-  return `${yyyy}-${mm}`
-}
-
-function nombreMes(mesISO) {
-  const [yyyy, mm] = mesISO.split('-')
-  return `${MESES[parseInt(mm, 10) - 1]} ${yyyy}`
-}
-
-function anosDisponibles() {
-  const actual = new Date().getFullYear()
-  const inicio = actual - 3
-  return Array.from({ length: actual - inicio + 1 }, (_, i) => actual - i)
-}
+import { EtiquetaCotizacion } from '../components/EstadoCotizacionTrabajo'
+import { claseTarjetaCotizacion } from '../utils/estadoCotizacion'
+import { MESES, mesActualISO, nombreMes, anosDisponibles } from '../utils/meses'
 
 function SelectorEntrega({ trabajo, onElegido }) {
   const [modalidad, setModalidad] = useState('RETIRO')
@@ -114,6 +94,8 @@ export default function ClienteMaestranza() {
   const [responsables, setResponsables] = useState([])
   const [responsableActivo, setResponsableActivo] = useState('')
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [mostrarFacturados, setMostrarFacturados] = useState(false)
+  const [mesFacturados, setMesFacturados] = useState(mesActualISO())
   const [mesFiltro, setMesFiltro] = useState(mesActualISO())
   const [expandido, setExpandido] = useState({})
   const [subiendoFoto, setSubiendoFoto] = useState(null)
@@ -201,6 +183,14 @@ export default function ClienteMaestranza() {
 
   const trabajosHistorial = trabajos.filter((t) => t.estado === 'TERMINADO' && t.modalidad_entrega)
   const trabajosActivos = trabajos.filter((t) => !(t.estado === 'TERMINADO' && t.modalidad_entrega))
+  // Trabajos con factura registrada (en azul), los más recientes primero.
+  const trabajosFacturados = trabajos
+    .filter((t) => t.estado_cotizacion === 'FACTURADA')
+    .sort((a, b) => (b.fecha_factura || '').localeCompare(a.fecha_factura || ''))
+  // Igual que Terminados: se muestran de a un mes (según la fecha de la factura).
+  const trabajosFacturadosDelMes = trabajosFacturados.filter(
+    (t) => (t.fecha_factura || '').slice(0, 7) === mesFacturados
+  )
 
   const trabajosHistorialDelMes = trabajosHistorial.filter((t) => {
     if (!t.updated_at) return false
@@ -362,7 +352,7 @@ export default function ClienteMaestranza() {
                     {trabajosHistorialDelMes.map((t) => {
                       const estaExpandido = Boolean(expandido[t.id])
                       return (
-                        <div key={t.id} className="bg-gray-50 rounded-lg shadow p-4 opacity-80">
+                        <div key={t.id} className={`rounded-lg shadow p-4 ${claseTarjetaCotizacion(t, 'bg-gray-50 opacity-80')}`}>
                           <button
                             type="button"
                             onClick={() => toggleExpandido(t.id)}
@@ -382,6 +372,7 @@ export default function ClienteMaestranza() {
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
                               <BadgeEstado estado={t.estado} />
+                              <EtiquetaCotizacion trabajo={t} />
                               <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
                             </div>
                           </button>
@@ -397,6 +388,100 @@ export default function ClienteMaestranza() {
                                 {t.modalidad_entrega === 'RETIRO'
                                   ? '✅ Confirmado: Retiro en local'
                                   : `✅ Confirmado: DESPACHO a ${t.direccion_entrega}`}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Carpeta Facturados: trabajos con factura registrada */}
+            {trabajosFacturados.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-600">
+                <button
+                  onClick={() => setMostrarFacturados(!mostrarFacturados)}
+                  className="text-blue-700 text-sm font-medium hover:underline"
+                >
+                  {mostrarFacturados ? '▲ Ocultar' : '▼ Ver'} carpeta Facturados ({trabajosFacturados.length})
+                </button>
+
+                {mostrarFacturados && (
+                  <div className="flex flex-col gap-3 mt-3">
+                    <div className="flex flex-wrap items-center gap-2 bg-blue-50 rounded-lg p-3">
+                      <label className="text-xs font-medium text-dark whitespace-nowrap">Filtrar por mes:</label>
+                      <select
+                        value={mesFacturados.split('-')[1]}
+                        onChange={(e) => setMesFacturados(`${mesFacturados.split('-')[0]}-${e.target.value}`)}
+                        className="border rounded p-1.5 text-sm bg-white"
+                      >
+                        {MESES.map((nombre, idx) => (
+                          <option key={idx} value={String(idx + 1).padStart(2, '0')}>{nombre}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={mesFacturados.split('-')[0]}
+                        onChange={(e) => setMesFacturados(`${e.target.value}-${mesFacturados.split('-')[1]}`)}
+                        className="border rounded p-1.5 text-sm bg-white"
+                      >
+                        {anosDisponibles().map((anio) => (
+                          <option key={anio} value={anio}>{anio}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-gray-600">
+                        {trabajosFacturadosDelMes.length} trabajo(s) facturado(s) en {nombreMes(mesFacturados)}
+                      </span>
+                    </div>
+
+                    {trabajosFacturadosDelMes.length === 0 && (
+                      <div className="bg-gray-50 rounded-lg p-6 text-center text-gray-500 text-sm">
+                        No tienes trabajos facturados en {nombreMes(mesFacturados)}.
+                      </div>
+                    )}
+
+                    {trabajosFacturadosDelMes.map((t) => {
+                      const estaExpandido = Boolean(expandido[`fact-${t.id}`])
+                      return (
+                        <div key={t.id} className="bg-blue-50 border-l-4 border-blue-600 rounded-lg shadow p-4">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandido(`fact-${t.id}`)}
+                            className="w-full flex justify-between items-start text-left gap-3"
+                          >
+                            <div className="flex gap-3 min-w-0">
+                              <span className="text-xs font-bold text-blue-800 bg-blue-100 rounded px-1.5 py-0.5 h-fit shrink-0">
+                                #{t.correlativo}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-dark uppercase">{t.categoria_display}</p>
+                                <p className="text-sm text-gray-700 mt-1 truncate">{t.descripcion}</p>
+                                {t.fecha_factura && (
+                                  <p className="text-xs text-blue-900 mt-1">
+                                    Facturado el {new Date(t.fecha_factura).toLocaleDateString('es-CL')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <EtiquetaCotizacion trabajo={t} />
+                              <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
+                            </div>
+                          </button>
+
+                          {estaExpandido && (
+                            <div className="mt-3 pt-3 border-t border-blue-200">
+                              <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+                                <span>Centro de costo: {t.centro_costo}</span>
+                                {t.responsable_nombre && <span>Encargado: {t.responsable_nombre}</span>}
+                                {t.modalidad_entrega && (
+                                  <span>
+                                    {t.modalidad_entrega === 'RETIRO' ? 'Retiro en local' : `Despacho a ${t.direccion_entrega}`}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           )}

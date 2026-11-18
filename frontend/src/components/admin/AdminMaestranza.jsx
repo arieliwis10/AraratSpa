@@ -3,7 +3,7 @@ import {
   getTrabajos, crearTrabajo, actualizarTrabajo, eliminarTrabajo, aprobarTrabajo, marcarCompletado, agregarMaterial,
   editarMaterial, eliminarMaterial,
   getSolicitudesMaterial, hayEnBodega, enviarACompras, agregarComentario, marcarComentariosVistos,
-  actualizarFoto, eliminarFotoTrabajo
+  actualizarFoto, eliminarFotoTrabajo, getProductosFlexibles
 } from '../../api/maestranza'
 import { getUsuarios, getEmpresas } from '../../api/usuarios'
 import { CATEGORIAS } from '../../constants/categorias'
@@ -12,6 +12,11 @@ import CotizacionModal from '../CotizacionModal'
 import FormularioTrabajo from '../FormularioTrabajo'
 import VisorFoto from '../VisorFoto'
 import Spinner from '../Spinner'
+import { EtiquetaCotizacion } from '../EstadoCotizacionTrabajo'
+import { claseTarjetaCotizacion } from '../../utils/estadoCotizacion'
+import { MESES, mesActualISO, nombreMes, anosDisponibles } from '../../utils/meses'
+import FichaFlexible from '../FichaFlexible'
+import ResumenFlexible from '../ResumenFlexible'
 
 // Categorías que en el flujo del cliente usan el formulario simple (descripción + fotos).
 // Ferretería (INSUMOS/REPUESTOS) usa un carrito de catálogo aparte, no este formulario.
@@ -30,6 +35,42 @@ function FechasTrabajo({ trabajo }) {
       <span>📅 Creado: {formatearFecha(trabajo.created_at)}</span>
       {trabajo.fecha_termino && (
         <span className="text-green-700">🏁 Terminado: {formatearFecha(trabajo.fecha_termino)}</span>
+      )}
+    </div>
+  )
+}
+
+// Solo en Flexibles hidráulicos: resumen con precios + edición de la ficha
+// con el mismo formulario que usan los trabajadores.
+function FichaFlexibleAdmin({ trabajo, productos, onGuardado }) {
+  const [editando, setEditando] = useState(false)
+  if (trabajo.categoria !== 'FLEXIBLES') return null
+
+  return (
+    <div className="mb-3">
+      <ResumenFlexible detalle={trabajo.detalle_flexible} />
+      {editando ? (
+        <>
+          <FichaFlexible
+            trabajo={trabajo}
+            productos={productos}
+            onGuardado={() => {
+              setEditando(false)
+              onGuardado()
+            }}
+          />
+          <button type="button" onClick={() => setEditando(false)} className="text-xs text-gray-500 hover:underline">
+            Cancelar edición de la ficha
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditando(true)}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          {trabajo.detalle_flexible ? '✏️ Editar ficha del flexible' : '+ Cargar ficha del flexible'}
+        </button>
       )}
     </div>
   )
@@ -231,6 +272,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [empresas, setEmpresas] = useState([])
   const [usuarios, setUsuarios] = useState([])
   const [trabajadores, setTrabajadores] = useState([])
+  const [productosFlexibles, setProductosFlexibles] = useState([])
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [editando, setEditando] = useState(null)
   const [nuevoMaterial, setNuevoMaterial] = useState({ nombre: '', cantidad: '' })
@@ -239,6 +281,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [comentarioTexto, setComentarioTexto] = useState({})
   const [enviandoComentario, setEnviandoComentario] = useState(null)
   const [mostrarHistorial, setMostrarHistorial] = useState(false)
+  const [mesFiltro, setMesFiltro] = useState(mesActualISO())
   const [expandido, setExpandido] = useState({})
   const [cotizando, setCotizando] = useState(null)
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState({})
@@ -257,6 +300,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   useEffect(() => {
     cargarEmpresas()
     cargarTrabajadores()
+    getProductosFlexibles().then((res) => setProductosFlexibles(res.data)).catch(() => {})
     cargarSolicitudesRevision()
   }, [])
 
@@ -530,6 +574,11 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   if (cargando) return <p className="text-dark">Cargando...</p>
 
   const trabajosHistorial = trabajos.filter((t) => t.estado === 'TERMINADO')
+  // La carpeta Terminados se muestra de a un mes (según la fecha en que se terminó)
+  // para que no se acumulen todos los trabajos en una sola lista.
+  const trabajosHistorialDelMes = trabajosHistorial.filter(
+    (t) => (t.fecha_termino || t.updated_at || '').slice(0, 7) === mesFiltro
+  )
   const trabajosActivos = trabajos.filter((t) => t.estado !== 'TERMINADO')
   const trabajosSinAsignar = trabajosActivos.filter((t) => t.estado === 'PENDIENTE' && !t.asignado_a)
   const clientesEmpresaNuevoTrabajo = usuarios.filter(
@@ -684,10 +733,41 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
           {mostrarHistorial && (
             <div className="flex flex-col gap-3 mt-3">
-              {trabajosHistorial.map((t) => {
+              <div className="flex flex-wrap items-center gap-2 bg-gray-50 rounded-lg p-3">
+                <label className="text-xs font-medium text-dark whitespace-nowrap">Mes:</label>
+                <select
+                  value={mesFiltro.split('-')[1]}
+                  onChange={(e) => setMesFiltro(`${mesFiltro.split('-')[0]}-${e.target.value}`)}
+                  className="border rounded p-1.5 text-sm bg-white"
+                >
+                  {MESES.map((nombre, idx) => (
+                    <option key={idx} value={String(idx + 1).padStart(2, '0')}>{nombre}</option>
+                  ))}
+                </select>
+                <select
+                  value={mesFiltro.split('-')[0]}
+                  onChange={(e) => setMesFiltro(`${e.target.value}-${mesFiltro.split('-')[1]}`)}
+                  className="border rounded p-1.5 text-sm bg-white"
+                >
+                  {anosDisponibles().map((anio) => (
+                    <option key={anio} value={anio}>{anio}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-gray-500">
+                  {trabajosHistorialDelMes.length} trabajo(s) terminado(s) en {nombreMes(mesFiltro)}
+                </span>
+              </div>
+
+              {trabajosHistorialDelMes.length === 0 && (
+                <div className="bg-gray-50 rounded-lg p-6 text-center text-gray-500 text-sm">
+                  No hay trabajos terminados en {nombreMes(mesFiltro)}.
+                </div>
+              )}
+
+              {trabajosHistorialDelMes.map((t) => {
                 const estaExpandido = Boolean(expandido[t.id])
                 return (
-                  <div key={t.id} className="bg-white rounded-lg shadow p-4 opacity-80">
+                  <div key={t.id} className={`rounded-lg shadow p-4 ${claseTarjetaCotizacion(t)}`}>
                     <button
                       type="button"
                       onClick={() => toggleExpandido(t.id)}
@@ -706,6 +786,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <BadgeEstado estado={t.estado} />
+                        <EtiquetaCotizacion trabajo={t} />
                         <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
                       </div>
                     </button>
@@ -733,6 +814,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                           onEliminar={handleEliminarFoto}
                           onVerFoto={setFotoAmpliada}
                         />
+
+                        <FichaFlexibleAdmin trabajo={t} productos={productosFlexibles} onGuardado={cargarTrabajos} />
 
                         <ListaMateriales
                           trabajoId={t.id}
@@ -967,6 +1050,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                   onVerFoto={setFotoAmpliada}
                 />
 
+                <FichaFlexibleAdmin trabajo={t} productos={productosFlexibles} onGuardado={cargarTrabajos} />
+
                 <ListaMateriales
                   trabajoId={t.id}
                   materiales={t.materiales}
@@ -1164,7 +1249,14 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
       })}
 
       {cotizando && (
-        <CotizacionModal trabajo={cotizando} onCerrar={() => setCotizando(null)} />
+        <CotizacionModal
+          trabajo={cotizando}
+          onCerrar={() => {
+            setCotizando(null)
+            // La cotización recién generada queda bloqueada: se recarga para ver el trabajo en verde.
+            cargarTrabajos()
+          }}
+        />
       )}
 
       <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />

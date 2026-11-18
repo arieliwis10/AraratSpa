@@ -537,23 +537,41 @@ class FlexibleDetalle(models.Model):
     def terminales_usados(self):
         return [t for t in [self.terminal_entrada, self.terminal_salida] if t]
 
+    def _consumo_por_producto(self):
+        """
+        Cantidad que consume la ficha de cada producto con stock, agrupada por
+        producto: si entrada y salida usan el mismo terminal, cuenta 2.
+        """
+        consumo = {}
+        if self.manguera_id:
+            consumo[self.manguera_id] = consumo.get(self.manguera_id, Decimal('0')) + self.largo_metros
+        for terminal in self.terminales_usados():
+            consumo[terminal.id] = consumo.get(terminal.id, Decimal('0')) + 1
+        if self.ferula_id:
+            consumo[self.ferula_id] = consumo.get(self.ferula_id, Decimal('0')) + self.cantidad_ferulas
+        return consumo
+
+    def _mover_stock(self, signo):
+        # F() en la base de datos: no depende de las copias en memoria de cada
+        # FK (con el mismo terminal en entrada y salida, una pisaba a la otra).
+        for producto_id, cantidad in self._consumo_por_producto().items():
+            ProductoFlexible.objects.filter(pk=producto_id).update(
+                stock_actual=models.F('stock_actual') + signo * cantidad
+            )
+
     def descontar_stock(self):
         if self.stock_descontado:
             return
-
-        if self.manguera:
-            self.manguera.stock_actual -= self.largo_metros
-            self.manguera.save()
-
-        for terminal in self.terminales_usados():
-            terminal.stock_actual -= 1
-            terminal.save()
-
-        if self.ferula:
-            self.ferula.stock_actual -= self.cantidad_ferulas
-            self.ferula.save()
-
+        self._mover_stock(-1)
         self.stock_descontado = True
+        self.save()
+
+    def devolver_stock(self):
+        """Revierte descontar_stock() (se usa al corregir la ficha de un trabajo ya terminado)."""
+        if not self.stock_descontado:
+            return
+        self._mover_stock(1)
+        self.stock_descontado = False
         self.save()
 
     def productos_faltantes(self):
@@ -575,9 +593,15 @@ class FlexibleDetalle(models.Model):
         elif self.cantidad_ferulas == 1 and len(self.terminales_usados()) < 1:
             faltantes.append("Falta seleccionar el terminal usado")
 
-        for terminal in self.terminales_usados():
-            if terminal.stock_actual < 1:
-                faltantes.append(f"{terminal} (sin stock)")
+        # Agrupado por producto: el mismo terminal en entrada y salida necesita 2.
+        terminales = {t.id: t for t in self.terminales_usados()}
+        consumo = self._consumo_por_producto()
+        for terminal_id, terminal in terminales.items():
+            necesarios = consumo[terminal_id]
+            if terminal.stock_actual < necesarios:
+                faltantes.append(
+                    f"{terminal} (stock insuficiente: {terminal.stock_actual} disponibles, se necesitan {necesarios})"
+                )
 
         if not self.ferula:
             faltantes.append("Falta seleccionar la férula")
@@ -747,10 +771,23 @@ class Cotizacion(models.Model):
     iva = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=12, decimal_places=2)
 
+    # Una cotización queda bloqueada apenas se genera (verde en el panel) y
+    # solo se desbloquea con la contraseña del admin. Al editarla y volver a
+    # generar el PDF se bloquea de nuevo.
+    bloqueada = models.BooleanField(default=True)
+    # Al registrar el N° de factura queda cerrada definitivamente (azul):
+    # ya no se puede editar, eliminar ni desbloquear.
+    numero_factura = models.CharField(max_length=50, blank=True)
+    fecha_factura = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']
+
+    @property
+    def facturada(self):
+        return bool(self.numero_factura)
 
     def save(self, *args, **kwargs):
         if not self.folio:

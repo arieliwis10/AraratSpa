@@ -163,6 +163,9 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     comentarios = ComentarioTrabajoSerializer(many=True, read_only=True)
     detalle_flexible = FlexibleDetalleSerializer(read_only=True)
     fotos = FotoTrabajoSerializer(many=True, read_only=True)
+    estado_cotizacion = serializers.SerializerMethodField()
+    numero_factura = serializers.SerializerMethodField()
+    fecha_factura = serializers.SerializerMethodField()
 
     class Meta:
         model = TrabajoMaestranza
@@ -173,9 +176,31 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'aprobado', 'estado', 'estado_display', 'avance', 'tiempo_entrega',
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
             'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible',
-            'fecha_termino',
+            'fecha_termino', 'estado_cotizacion', 'numero_factura', 'fecha_factura',
         ]
         read_only_fields = ['cliente', 'correlativo', 'fecha_termino']
+
+    # El color del trabajo en el panel admin replica el de sus cotizaciones:
+    # FACTURADA (azul) si alguna tiene factura, BLOQUEADA (verde) si alguna
+    # está bloqueada, DESBLOQUEADA si todas están abiertas, None si no tiene.
+    # Se recorre en Python para aprovechar el prefetch de 'cotizaciones'.
+    def get_estado_cotizacion(self, obj):
+        cotizaciones = list(obj.cotizaciones.all())
+        if not cotizaciones:
+            return None
+        if any(c.numero_factura for c in cotizaciones):
+            return 'FACTURADA'
+        if any(c.bloqueada for c in cotizaciones):
+            return 'BLOQUEADA'
+        return 'DESBLOQUEADA'
+
+    def get_numero_factura(self, obj):
+        facturas = [c.numero_factura for c in obj.cotizaciones.all() if c.numero_factura]
+        return ', '.join(facturas) or None
+
+    def get_fecha_factura(self, obj):
+        fechas = [c.fecha_factura for c in obj.cotizaciones.all() if c.numero_factura and c.fecha_factura]
+        return max(fechas) if fechas else None
 
     def validate(self, data):
         # Solo exige responsable al crear un trabajo nuevo (no al editar/actualizar uno existente)
@@ -348,8 +373,11 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'empresa', 'empresa_nombre', 'empresa_email', 'cliente_email',
             'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
+            'bloqueada', 'numero_factura', 'fecha_factura',
         ]
-        read_only_fields = ['created_at']
+        # bloqueo/factura solo cambian por sus acciones dedicadas (desbloquear
+        # con clave, registrar_factura), nunca por un PATCH normal.
+        read_only_fields = ['created_at', 'bloqueada', 'numero_factura', 'fecha_factura']
 
     def get_empresa_email(self, obj):
         if not obj.empresa:

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { generarCotizacionPDF } from '../utils/generarCotizacionPDF'
 import { crearCotizacion, actualizarCotizacion } from '../api/cotizaciones'
+import { itemsCotizacionFlexible } from '../utils/flexibles'
 
 const ETIQUETA_TARIFA_COTIZACION = {
   dia: 'tarifa diaria',
@@ -62,11 +63,15 @@ export default function CotizacionModal({
     esEdicion
       ? cotizacionExistente.items
       : trabajo
-        ? (trabajo.materiales || []).map((m) => ({
-            detalle: `${m.nombre} — ${m.cantidad}`,
-            cantidad: '1',
-            precioUnitario: '',
-          }))
+        ? [
+            // Ficha del flexible: piezas del catálogo con su precio.
+            ...itemsCotizacionFlexible(trabajo.detalle_flexible),
+            ...(trabajo.materiales || []).map((m) => ({
+              detalle: `${m.nombre} — ${m.cantidad}`,
+              cantidad: '1',
+              precioUnitario: '',
+            })),
+          ]
         : reserva
           ? [
               {
