@@ -76,6 +76,80 @@ function FichaFlexibleAdmin({ trabajo, productos, onGuardado }) {
   )
 }
 
+// Descripción con edición en línea, para los trabajos de la carpeta Terminados
+// (los activos la editan en el panel "Actualizar / asignar / materiales").
+function DescripcionEditable({ trabajo, onGuardado }) {
+  const [editando, setEditando] = useState(false)
+  const [texto, setTexto] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  async function guardar() {
+    const descripcion = texto.trim()
+    if (!descripcion) {
+      alert('La descripción no puede quedar vacía')
+      return
+    }
+    setGuardando(true)
+    try {
+      await actualizarTrabajo(trabajo.id, { descripcion })
+      setEditando(false)
+      onGuardado()
+    } catch {
+      alert('Error al guardar la descripción')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (!editando) {
+    return (
+      <div className="mb-2">
+        <p className="text-sm text-gray-600">{trabajo.descripcion}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setTexto(trabajo.descripcion || '')
+            setEditando(true)
+          }}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          ✏️ Editar descripción
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-2">
+      <textarea
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        rows={3}
+        className="w-full border rounded p-2 text-sm"
+      />
+      <div className="flex gap-2 mt-1">
+        <button
+          type="button"
+          onClick={guardar}
+          disabled={guardando}
+          className="bg-primary text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-60 flex items-center gap-1.5"
+        >
+          {guardando && <Spinner className="h-3 w-3" />}
+          {guardando ? 'Guardando...' : 'Guardar descripción'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditando(false)}
+          disabled={guardando}
+          className="bg-dark/10 text-dark px-3 py-1.5 rounded text-xs hover:bg-dark/20 disabled:opacity-60"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function FormularioMaterialAdmin({ trabajoId, onAgregar }) {
   const [nombre, setNombre] = useState('')
   const [cantidad, setCantidad] = useState('')
@@ -395,6 +469,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   function abrirEdicion(trabajo) {
     setEditando({
       id: trabajo.id,
+      descripcion: trabajo.descripcion || '',
       estado: trabajo.estado,
       avance: trabajo.avance,
       tiempo_entrega: trabajo.tiempo_entrega || '',
@@ -405,10 +480,16 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   }
 
   async function guardarCambios() {
+    const descripcion = editando.descripcion.trim()
+    if (!descripcion) {
+      alert('La descripción no puede quedar vacía')
+      return
+    }
     const asignandoAhora = Boolean(editando.asignado_a)
     const estadoFinal = asignandoAhora && editando.estado === 'PENDIENTE' ? 'EN_PROGRESO' : editando.estado
 
     const payload = {
+      descripcion,
       estado: estadoFinal,
       avance: editando.avance,
       tiempo_entrega: editando.tiempo_entrega || null,
@@ -795,7 +876,7 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                     {estaExpandido && (
                       <div className="mt-3 pt-3 border-t">
                         <p className="text-sm font-medium text-dark mb-1">{t.cliente_nombre}</p>
-                        <p className="text-sm text-gray-600 mb-2">{t.descripcion}</p>
+                        <DescripcionEditable trabajo={t} onGuardado={cargarTrabajos} />
 
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
                           <span>Centro de costo: {t.centro_costo}</span>
@@ -1119,6 +1200,15 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
 
                 {estaEnEdicion ? (
                   <div className="border-t pt-3 mt-2 flex flex-col gap-3 bg-gray-50 -mx-4 -mb-4 p-4 rounded-b-lg">
+                    <div>
+                      <label className="block text-xs font-medium mb-1 text-dark">Descripción del trabajo</label>
+                      <textarea
+                        value={editando.descripcion}
+                        onChange={(e) => setEditando({ ...editando, descripcion: e.target.value })}
+                        rows={3}
+                        className="w-full border rounded p-2 text-sm"
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium mb-1 text-dark">Estado</label>
