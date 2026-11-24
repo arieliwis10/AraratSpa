@@ -166,6 +166,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     estado_cotizacion = serializers.SerializerMethodField()
     numero_factura = serializers.SerializerMethodField()
     fecha_factura = serializers.SerializerMethodField()
+    eliminado_por_nombre = serializers.SerializerMethodField()
 
     class Meta:
         model = TrabajoMaestranza
@@ -177,8 +178,15 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
             'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible',
             'fecha_termino', 'estado_cotizacion', 'numero_factura', 'fecha_factura',
+            'eliminado_en', 'eliminado_por_nombre',
         ]
-        read_only_fields = ['cliente', 'correlativo', 'fecha_termino']
+        read_only_fields = ['cliente', 'correlativo', 'fecha_termino', 'eliminado_en']
+
+    def get_eliminado_por_nombre(self, obj):
+        usuario = obj.eliminado_por
+        if not usuario:
+            return None
+        return f"{usuario.first_name} {usuario.last_name}".strip() or usuario.username
 
     # El color del trabajo en el panel admin replica el de sus cotizaciones:
     # FACTURADA (azul) si alguna tiene factura, BLOQUEADA (verde) si alguna
@@ -402,7 +410,19 @@ class HistorialEliminacionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = HistorialEliminacion
-        fields = ['id', 'tipo', 'descripcion', 'detalle', 'eliminado_por_nombre', 'fecha']
+        fields = [
+            'id', 'tipo', 'descripcion', 'detalle', 'eliminado_por_nombre', 'fecha',
+            'restaurado_en', 'recuperacion',
+        ]
+
+    recuperacion = serializers.SerializerMethodField()
+
+    def get_recuperacion(self, obj):
+        """Datos para el botón "Recuperar trabajo" (solo trabajos de maestranza aún no recuperados)."""
+        if obj.restaurado_en:
+            return None
+        from .views import info_recuperacion_trabajo
+        return info_recuperacion_trabajo(obj)
 
     def get_eliminado_por_nombre(self, obj):
         if not obj.eliminado_por:

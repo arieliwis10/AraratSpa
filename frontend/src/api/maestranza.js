@@ -8,6 +8,10 @@ export const crearTrabajo = (formData) =>
   })
 export const actualizarTrabajo = (id, data) => api.patch(`trabajos-maestranza/${id}/`, data)
 export const eliminarTrabajo = (id) => api.delete(`trabajos-maestranza/${id}/`)
+// Papelera: "eliminar" manda el trabajo a la papelera; desde ahí se restaura o se borra para siempre.
+export const getPapeleraTrabajos = () => api.get('trabajos-maestranza/papelera/')
+export const restaurarTrabajo = (id) => api.post(`trabajos-maestranza/${id}/restaurar/`)
+export const eliminarTrabajoDefinitivo = (id) => api.delete(`trabajos-maestranza/${id}/eliminar_definitivo/`)
 export const actualizarProgreso = (id, data) => api.patch(`trabajos-maestranza/${id}/actualizar_progreso/`, data)
 export const aprobarTrabajo = (id) => api.patch(`trabajos-maestranza/${id}/aprobar/`)
 export const marcarCompletado = (id) => api.patch(`trabajos-maestranza/${id}/marcar_completado/`)

@@ -17,6 +17,7 @@ import { claseTarjetaCotizacion } from '../../utils/estadoCotizacion'
 import { MESES, TODOS_LOS_MESES, mesActualISO, nombreMes, anosDisponibles, coincideMes } from '../../utils/meses'
 import FichaFlexible from '../FichaFlexible'
 import ResumenFlexible from '../ResumenFlexible'
+import PapeleraTrabajos from './PapeleraTrabajos'
 
 // Categorías que en el flujo del cliente usan el formulario simple (descripción + fotos).
 // Ferretería (INSUMOS/REPUESTOS) usa un carrito de catálogo aparte, no este formulario.
@@ -361,6 +362,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState({})
   const [mostrarSinAsignar, setMostrarSinAsignar] = useState(true)
   const [eliminando, setEliminando] = useState(null)
+  // Sube cada vez que un trabajo va a la papelera, para que esta se recargue.
+  const [versionPapelera, setVersionPapelera] = useState(0)
   const [mostrarNuevoTrabajo, setMostrarNuevoTrabajo] = useState(false)
   const [empresaNuevoTrabajo, setEmpresaNuevoTrabajo] = useState('')
   const [clienteNuevoTrabajo, setClienteNuevoTrabajo] = useState('')
@@ -537,12 +540,13 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
   }
 
   async function handleEliminar(id, correlativo) {
-    if (!confirm(`¿Eliminar el trabajo #${correlativo}? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Enviar el trabajo #${correlativo} a la papelera? Podrás restaurarlo desde ahí.`)) return
     setEliminando(id)
     try {
       await eliminarTrabajo(id)
       if (editando?.id === id) setEditando(null)
       cargarTrabajos()
+      setVersionPapelera((v) => v + 1)
     } catch (err) {
       alert('Error al eliminar el trabajo')
     } finally {
@@ -1349,6 +1353,8 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
           }}
         />
       )}
+
+      <PapeleraTrabajos version={versionPapelera} onRestaurado={cargarTrabajos} />
 
       <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />
     </div>

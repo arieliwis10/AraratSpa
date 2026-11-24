@@ -12,6 +12,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import base64
+import re
+from urllib.parse import urlparse, unquote
+
+from django.conf import settings
+from django.core.files.storage import default_storage
 
 from .models import (
     Usuario, Empresa, Responsable, TrabajoMaestranza, MaterialUsado, FotoTrabajo,
@@ -34,6 +39,13 @@ from .background import en_segundo_plano
 class EsAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.rol == 'ADMIN'
+
+# Las solicitudes de material sueltas (sin trabajo) siempre se muestran; las
+# anexas a un trabajo que está en la papelera se ocultan junto con él.
+SOLICITUD_SIN_TRABAJO_EN_PAPELERA = (
+    models.Q(trabajo__isnull=True) | models.Q(trabajo__eliminado_en__isnull=True)
+)
+
 
 def _registrar_eliminacion(request, tipo, descripcion, detalle=None):
     """Guarda una fila en el historial justo antes de borrar el objeto real."""
@@ -1045,7 +1057,7 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
     serializer_class = TrabajoMaestranzaSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    historial_tipo = 'Trabajo de Maestranza'
+    historial_tipo = 'Trabajo de Maestranza'  # = TIPO_HISTORIAL_TRABAJO
 
     def historial_descripcion(self, instance):
         empresa = instance.cliente.empresa.nombre if instance.cliente and instance.cliente.empresa else '-'
@@ -1071,16 +1083,52 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
                 if url:
                     fotos.append(url)
 
+        empresa = instance.cliente.empresa if instance.cliente else None
         return {
             'descripcion_trabajo': instance.descripcion,
             'centro_costo': instance.centro_costo,
             'responsable': instance.responsable.nombre if instance.responsable else None,
             'fotos': fotos,
+            # Datos para poder reconstruir el trabajo desde el historial
+            # (no se muestran en pantalla).
+            'datos': {
+                'correlativo': instance.correlativo,
+                'categoria': instance.categoria,
+                'cliente_id': instance.cliente_id,
+                'empresa_id': empresa.id if empresa else None,
+                'responsable_id': instance.responsable_id,
+                'estado': instance.estado,
+                'avance': instance.avance,
+                'aprobado': instance.aprobado,
+                'materiales': [
+                    {'nombre': m.nombre, 'cantidad': m.cantidad}
+                    for m in instance.materiales.all()
+                ],
+            },
         }
 
 
+    # Acciones que trabajan sobre los trabajos que están en la papelera.
+    ACCIONES_PAPELERA = ('papelera', 'restaurar', 'eliminar_definitivo')
+
     def get_queryset(self):
         user = self.request.user
+        if self.action in self.ACCIONES_PAPELERA:
+            # Solo el admin llega acá (get_permissions), pero por las dudas.
+            if user.rol != 'ADMIN':
+                return TrabajoMaestranza.todos.none()
+            return TrabajoMaestranza.todos.filter(
+                eliminado_en__isnull=False
+            ).select_related(
+                'cliente__empresa', 'responsable', 'asignado_a', 'eliminado_por'
+            ).prefetch_related(
+                'fotos', 'materiales', 'cotizaciones',
+                models.Prefetch(
+                    'comentarios',
+                    queryset=ComentarioTrabajo.objects.select_related('autor', 'responsable'),
+                ),
+            ).order_by('-eliminado_en')
+
         qs = TrabajoMaestranza.objects.select_related(
             'cliente__empresa', 'responsable', 'asignado_a',
             'detalle_flexible__manguera', 'detalle_flexible__terminal_entrada',
@@ -1107,9 +1155,40 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         return qs.filter(cliente=user).order_by('-created_at')
 
     def get_permissions(self):
-        if self.action in ['update', 'partial_update', 'destroy']:
+        if self.action in ['update', 'partial_update', 'destroy', *self.ACCIONES_PAPELERA]:
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
+
+    def perform_destroy(self, instance):
+        """
+        "Eliminar trabajo" ya no borra: lo manda a la papelera. Desde ahí se
+        puede restaurar tal cual (con fotos, materiales, comentarios, ficha de
+        flexibles y cotizaciones) o eliminar definitivamente.
+        """
+        instance.eliminado_en = timezone.now()
+        instance.eliminado_por = self.request.user
+        instance.save(update_fields=['eliminado_en', 'eliminado_por', 'updated_at'])
+
+    @action(detail=False, methods=['get'])
+    def papelera(self, request):
+        trabajos = self.get_queryset()
+        return Response(self.get_serializer(trabajos, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def restaurar(self, request, pk=None):
+        trabajo = self.get_object()
+        trabajo.eliminado_en = None
+        trabajo.eliminado_por = None
+        trabajo.save(update_fields=['eliminado_en', 'eliminado_por', 'updated_at'])
+        return Response(self.get_serializer(trabajo).data)
+
+    @action(detail=True, methods=['delete'])
+    def eliminar_definitivo(self, request, pk=None):
+        trabajo = self.get_object()
+        # Borrado real: queda registrado en el Historial de eliminaciones
+        # (con los datos necesarios para recuperarlo desde ahí si hiciera falta).
+        RegistraEliminacionMixin.perform_destroy(self, trabajo)
+        return Response(status=204)
 
     def perform_create(self, serializer):
         cliente = self.request.user
@@ -1422,7 +1501,9 @@ class SolicitudMaterialViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = SolicitudMaterial.objects.select_related('trabajo__cliente__empresa', 'solicitante')
+        qs = SolicitudMaterial.objects.select_related(
+            'trabajo__cliente__empresa', 'solicitante'
+        ).filter(SOLICITUD_SIN_TRABAJO_EN_PAPELERA)
         if user.rol == 'ADMIN':
             return qs.order_by('-created_at')
         elif user.rol == 'TRABAJADOR':
@@ -1929,9 +2010,13 @@ class ResumenPendientesView(APIView):
             models.Q(aprobado=False) | models.Q(estado='PENDIENTE', asignado_a__isnull=True)
         ).exclude(estado='TERMINADO').count()
 
-        solicitudes_por_revisar = SolicitudMaterial.objects.filter(estado='REVISION').count()
+        solicitudes_por_revisar = SolicitudMaterial.objects.filter(
+            SOLICITUD_SIN_TRABAJO_EN_PAPELERA, estado='REVISION'
+        ).count()
 
-        comentarios_sin_ver = ComentarioTrabajo.objects.filter(visto_admin=False).count()
+        comentarios_sin_ver = ComentarioTrabajo.objects.filter(
+            visto_admin=False, trabajo__eliminado_en__isnull=True
+        ).count()
 
         return Response({
             'maestranza': maestranza_por_aprobar_o_asignar + solicitudes_por_revisar + comentarios_sin_ver,
@@ -1943,7 +2028,7 @@ class ResumenPendientesView(APIView):
                 estado=ReservaMaquina.Estado.PENDIENTE
             ).count(),
             'compras': SolicitudMaterial.objects.filter(
-                estado='PENDIENTE'
+                SOLICITUD_SIN_TRABAJO_EN_PAPELERA, estado='PENDIENTE'
             ).count(),
         })
 
@@ -2266,8 +2351,79 @@ def guardar_push_subscription(request):
     )
     return Response({'status': 'ok'})
 
+TIPO_HISTORIAL_TRABAJO = 'Trabajo de Maestranza'
+
+
+def _ruta_media_desde_url(url):
+    """'https://api.../media/maestranza/x.jpg' -> 'maestranza/x.jpg'"""
+    ruta = unquote(urlparse(url or '').path)
+    media_url = settings.MEDIA_URL
+    if not media_url.startswith('/'):
+        media_url = '/' + media_url
+    if ruta.startswith(media_url):
+        return ruta[len(media_url):]
+    return None
+
+
+def info_recuperacion_trabajo(registro):
+    """
+    Lo que se puede deducir de un registro del historial para recuperar el
+    trabajo. Los registros antiguos solo tienen la descripción
+    "#<n> <Categoría> - <Empresa>", así que se interpreta ese texto; los
+    nuevos traen además detalle['datos'] con los ids.
+    Devuelve None si el registro no es de un trabajo de maestranza.
+    """
+    if registro.tipo != TIPO_HISTORIAL_TRABAJO:
+        return None
+    datos = (registro.detalle or {}).get('datos') or {}
+
+    correlativo = datos.get('correlativo')
+    categoria = datos.get('categoria')
+    empresa_nombre = None
+
+    m = re.match(r'^#(\d+)\s+(.*?)\s+-\s+(.*)$', registro.descripcion or '')
+    if m:
+        correlativo = correlativo or int(m.group(1))
+        empresa_nombre = m.group(3).strip()
+        if not categoria:
+            etiquetas = {str(label): valor for valor, label in TrabajoMaestranza.Categoria.choices}
+            categoria = etiquetas.get(m.group(2).strip())
+
+    empresa = None
+    if datos.get('empresa_id'):
+        empresa = Empresa.objects.filter(pk=datos['empresa_id']).first()
+    if not empresa and empresa_nombre and empresa_nombre != '-':
+        empresa = Empresa.objects.filter(nombre=empresa_nombre).first()
+
+    clientes = list(
+        Usuario.objects.filter(rol='CLIENTE', empresa=empresa).order_by('username')
+    ) if empresa else []
+
+    cliente_id = None
+    if datos.get('cliente_id') and Usuario.objects.filter(pk=datos['cliente_id'], rol='CLIENTE').exists():
+        cliente_id = datos['cliente_id']
+    elif len(clientes) == 1:
+        cliente_id = clientes[0].id
+
+    return {
+        'correlativo': correlativo,
+        'categoria': categoria,
+        'estado': datos.get('estado'),
+        'empresa_id': empresa.id if empresa else None,
+        'empresa_nombre': empresa.nombre if empresa else empresa_nombre,
+        'cliente_id': cliente_id,
+        'clientes': [
+            {'id': c.id, 'nombre': f'{c.first_name} {c.last_name}'.strip() or c.username}
+            for c in clientes
+        ],
+    }
+
+
 class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
-    """Solo lectura: el historial no se edita ni se borra desde la app."""
+    """
+    Solo lectura: el historial no se edita ni se borra desde la app. La única
+    acción es recuperar un trabajo de maestranza que se borró (ver abajo).
+    """
     queryset = HistorialEliminacion.objects.select_related('eliminado_por').all()
     serializer_class = HistorialEliminacionSerializer
     permission_classes = [EsAdmin]
@@ -2278,3 +2434,104 @@ class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
         if tipo:
             qs = qs.filter(tipo=tipo)
         return qs
+
+    @action(detail=True, methods=['post'])
+    def recuperar_trabajo(self, request, pk=None):
+        """
+        Reconstruye un trabajo de maestranza borrado definitivamente a partir
+        de lo que quedó guardado en el historial: número, categoría,
+        descripción, centro de costo, responsable, fotos (los archivos siguen
+        en el servidor) y, si se guardaron, materiales/estado/avance.
+        Lo que no quedó guardado (comentarios, ficha de flexibles, fechas
+        originales) no se puede recuperar.
+
+        Body: { cliente: <id>, estado: 'PENDIENTE' | 'EN_PROGRESO' | 'TERMINADO' }
+        """
+        registro = self.get_object()
+        info = info_recuperacion_trabajo(registro)
+        if info is None:
+            return Response({'error': 'Este registro no es de un trabajo de maestranza.'}, status=400)
+        if registro.restaurado_en:
+            return Response({'error': 'Este trabajo ya fue recuperado.'}, status=400)
+        if not info['categoria']:
+            return Response({'error': 'No se pudo determinar la categoría del trabajo.'}, status=400)
+
+        cliente_id = request.data.get('cliente') or info['cliente_id']
+        cliente = Usuario.objects.filter(pk=cliente_id, rol='CLIENTE').first() if cliente_id else None
+        if not cliente:
+            return Response({'error': 'Selecciona el cliente al que pertenece el trabajo.'}, status=400)
+
+        estado = request.data.get('estado') or info['estado'] or TrabajoMaestranza.Estado.TERMINADO
+        if estado not in TrabajoMaestranza.Estado.values:
+            return Response({'error': 'Estado no válido.'}, status=400)
+
+        detalle = registro.detalle or {}
+        datos = detalle.get('datos') or {}
+        avisos = []
+
+        # Si otro trabajo de la misma empresa ya tomó ese número, se asigna
+        # uno nuevo (correlativo=0 hace que save() calcule el siguiente).
+        correlativo = info['correlativo'] or 0
+        if correlativo and cliente.empresa_id and TrabajoMaestranza.todos.filter(
+            cliente__empresa_id=cliente.empresa_id, correlativo=correlativo
+        ).exists():
+            avisos.append(f'El número #{correlativo} ya lo usa otro trabajo de la empresa; se asignó uno nuevo.')
+            correlativo = 0
+
+        responsable = None
+        if cliente.empresa_id:
+            responsables = Responsable.objects.filter(empresa_id=cliente.empresa_id)
+            if datos.get('responsable_id'):
+                responsable = responsables.filter(pk=datos['responsable_id']).first()
+            if not responsable and detalle.get('responsable'):
+                responsable = responsables.filter(nombre=detalle['responsable']).first()
+
+        terminado = estado == TrabajoMaestranza.Estado.TERMINADO
+        avance = 100 if terminado else min(int(datos.get('avance') or 0), 99)
+
+        with transaction.atomic():
+            trabajo = TrabajoMaestranza(
+                cliente=cliente,
+                responsable=responsable,
+                correlativo=correlativo,
+                categoria=info['categoria'],
+                descripcion=detalle.get('descripcion_trabajo') or '(Recuperado del historial: sin descripción guardada)',
+                centro_costo=detalle.get('centro_costo') or '-',
+                # Un trabajo en curso o terminado ya estaba aprobado.
+                aprobado=bool(datos.get('aprobado')) or estado != TrabajoMaestranza.Estado.PENDIENTE,
+                estado=estado,
+                avance=avance,
+            )
+            trabajo.save()
+
+            # Fecha de creación/término: la mejor aproximación es la fecha en
+            # que se borró (así no aparece como un trabajo nuevo de hoy).
+            cambios = {'created_at': registro.fecha}
+            if terminado:
+                cambios['fecha_termino'] = registro.fecha
+            TrabajoMaestranza.todos.filter(pk=trabajo.pk).update(**cambios)
+
+            fotos = detalle.get('fotos') or []
+            fotos_ok = 0
+            for url in fotos:
+                nombre = _ruta_media_desde_url(url)
+                if nombre and default_storage.exists(nombre):
+                    FotoTrabajo.objects.create(trabajo=trabajo, imagen=nombre)
+                    fotos_ok += 1
+            if fotos_ok < len(fotos):
+                avisos.append(f'Se recuperaron {fotos_ok} de {len(fotos)} fotos (las demás ya no están en el servidor).')
+
+            for mat in datos.get('materiales') or []:
+                MaterialUsado.objects.create(
+                    trabajo=trabajo, nombre=mat.get('nombre', ''), cantidad=mat.get('cantidad', '')
+                )
+
+            registro.restaurado_en = timezone.now()
+            registro.save(update_fields=['restaurado_en'])
+
+        trabajo.refresh_from_db()
+        return Response({
+            'trabajo_id': trabajo.id,
+            'correlativo': trabajo.correlativo,
+            'avisos': avisos,
+        }, status=201)

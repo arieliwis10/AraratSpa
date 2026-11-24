@@ -143,3 +143,119 @@ class FichaFlexibleTests(TestCase):
         self.api.force_authenticate(self.cliente)
         res = self.api.post(self.url + 'guardar_detalle_flexible/', {'largo_metros': '1'}, format='json')
         self.assertEqual(res.status_code, 403)
+
+
+class PapeleraTrabajosTests(TestCase):
+    """Eliminar un trabajo lo manda a la papelera; desde ahí se restaura o se borra para siempre."""
+
+    def setUp(self):
+        self.admin = Usuario.objects.create_user('admin', password='x', rol='ADMIN', first_name='Ana')
+        self.empresa = Empresa.objects.create(nombre='Minera Sur')
+        self.cliente = Usuario.objects.create_user('cli', password='x', rol='CLIENTE', empresa=self.empresa)
+        self.trabajo = TrabajoMaestranza.objects.create(
+            cliente=self.cliente, categoria='SOLDADURA', descripcion='Soldar estanque', centro_costo='CC1',
+        )
+        self.api = APIClient()
+        self.api.force_authenticate(self.admin)
+        self.url = f'/api/trabajos-maestranza/{self.trabajo.id}/'
+
+    def _ids(self, user):
+        api = APIClient()
+        api.force_authenticate(user)
+        return [t['id'] for t in api.get('/api/trabajos-maestranza/').data]
+
+    def test_eliminar_restaurar_y_definitivo(self):
+        from .models import HistorialEliminacion, MaterialUsado
+        MaterialUsado.objects.create(trabajo=self.trabajo, nombre='Electrodo', cantidad='2 kg')
+
+        self.assertEqual(self.api.delete(self.url).status_code, 204)
+        # Oculto para admin y cliente, pero sigue existiendo con sus materiales.
+        self.assertNotIn(self.trabajo.id, self._ids(self.admin))
+        self.assertNotIn(self.trabajo.id, self._ids(self.cliente))
+        self.assertEqual(self.api.get(self.url).status_code, 404)
+        self.assertEqual(MaterialUsado.objects.filter(trabajo_id=self.trabajo.id).count(), 1)
+        self.assertFalse(HistorialEliminacion.objects.exists())
+
+        papelera = self.api.get('/api/trabajos-maestranza/papelera/').data
+        self.assertEqual([t['id'] for t in papelera], [self.trabajo.id])
+        self.assertEqual(papelera[0]['eliminado_por_nombre'], 'Ana')
+
+        # El cliente no puede ver ni tocar la papelera.
+        api_cli = APIClient()
+        api_cli.force_authenticate(self.cliente)
+        self.assertEqual(api_cli.get('/api/trabajos-maestranza/papelera/').status_code, 403)
+
+        # Un trabajo nuevo no reutiliza el número del que está en la papelera.
+        nuevo = TrabajoMaestranza.objects.create(
+            cliente=self.cliente, categoria='TORNO', descripcion='x', centro_costo='y',
+        )
+        self.assertEqual(nuevo.correlativo, self.trabajo.correlativo + 1)
+
+        # Restaurar lo devuelve tal cual.
+        self.assertEqual(self.api.post(self.url + 'restaurar/').status_code, 200)
+        self.assertIn(self.trabajo.id, self._ids(self.admin))
+        self.assertEqual(self.api.get('/api/trabajos-maestranza/papelera/').data, [])
+
+        # Eliminar definitivo solo funciona desde la papelera, y deja historial.
+        self.assertEqual(self.api.delete(self.url + 'eliminar_definitivo/').status_code, 404)
+        self.api.delete(self.url)
+        self.assertEqual(self.api.delete(self.url + 'eliminar_definitivo/').status_code, 204)
+        self.assertFalse(TrabajoMaestranza.todos.filter(pk=self.trabajo.id).exists())
+        registro = HistorialEliminacion.objects.get()
+        self.assertEqual(registro.detalle['datos']['materiales'], [{'nombre': 'Electrodo', 'cantidad': '2 kg'}])
+
+        # ...y desde el historial se puede recuperar con sus materiales.
+        res = self.api.post(f'/api/historial-eliminaciones/{registro.id}/recuperar_trabajo/', {}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        recuperado = TrabajoMaestranza.objects.get(pk=res.data['trabajo_id'])
+        self.assertEqual(recuperado.correlativo, self.trabajo.correlativo)
+        self.assertEqual(recuperado.estado, 'PENDIENTE')
+        self.assertEqual(recuperado.materiales.count(), 1)
+
+    def test_recuperar_registro_antiguo_del_historial(self):
+        """Registros de antes de la papelera: solo texto + fotos por URL."""
+        import shutil
+        import tempfile
+        from django.test import override_settings
+        from .models import HistorialEliminacion
+
+        media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media, ignore_errors=True)
+        with override_settings(MEDIA_ROOT=media):
+            import os
+            os.makedirs(os.path.join(media, 'maestranza'))
+            open(os.path.join(media, 'maestranza', 'foto 1.jpg'), 'wb').close()
+
+            Responsable.objects.create(empresa=self.empresa, nombre='Pedro')
+            registro = HistorialEliminacion.objects.create(
+                tipo='Trabajo de Maestranza',
+                descripcion='#7 Fabricación de equipos especiales y proyecto - Minera Sur',
+                detalle={
+                    'descripcion_trabajo': 'Rampa', 'centro_costo': 'CC9', 'responsable': 'Pedro',
+                    'fotos': [
+                        'https://api.example.com/media/maestranza/foto%201.jpg',
+                        'https://api.example.com/media/maestranza/no-existe.jpg',
+                    ],
+                },
+            )
+            lista = self.api.get('/api/historial-eliminaciones/').data
+            info = lista[0]['recuperacion']
+            self.assertEqual(info['categoria'], 'FABRICACION')
+            self.assertEqual(info['correlativo'], 7)
+            self.assertEqual(info['cliente_id'], self.cliente.id)  # único cliente de la empresa
+
+            url = f'/api/historial-eliminaciones/{registro.id}/recuperar_trabajo/'
+            res = self.api.post(url, {'estado': 'TERMINADO'}, format='json')
+            self.assertEqual(res.status_code, 201, res.data)
+            self.assertEqual(len(res.data['avisos']), 1)  # 1 de 2 fotos
+
+            t = TrabajoMaestranza.objects.get(pk=res.data['trabajo_id'])
+            self.assertEqual((t.correlativo, t.categoria, t.descripcion), (7, 'FABRICACION', 'Rampa'))
+            self.assertEqual(t.responsable.nombre, 'Pedro')
+            self.assertEqual(t.avance, 100)
+            self.assertEqual(t.fecha_termino, registro.fecha)
+            self.assertEqual([f.imagen.name for f in t.fotos.all()], ['maestranza/foto 1.jpg'])
+
+            # No se puede recuperar dos veces.
+            self.assertEqual(self.api.post(url, {}, format='json').status_code, 400)
+            self.assertIsNone(self.api.get('/api/historial-eliminaciones/').data[0]['recuperacion'])

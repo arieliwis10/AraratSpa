@@ -41,6 +41,17 @@ class Usuario(AbstractUser):
         return f"{self.username} ({self.get_rol_display()})"
 
 
+class TrabajoNoEliminadoManager(models.Manager):
+    """
+    Manager por defecto de TrabajoMaestranza: oculta los trabajos que están
+    en la papelera. Así todos los listados, conteos y relaciones inversas
+    (cliente.trabajos_maestranza, etc.) los ignoran sin tener que acordarse
+    de filtrar en cada lugar. Para verlos usar TrabajoMaestranza.todos.
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(eliminado_en__isnull=True)
+
+
 class TrabajoMaestranza(models.Model):
     class Categoria(models.TextChoices):
         SOLDADURA = 'SOLDADURA', 'Soldadura'
@@ -94,8 +105,19 @@ class TrabajoMaestranza(models.Model):
     # "marcar completado" y edición del admin.
     fecha_termino = models.DateTimeField(null=True, blank=True)
 
+    # Papelera: si eliminado_en tiene fecha, el trabajo está en la papelera
+    # (oculto en toda la app) y se puede restaurar o eliminar definitivamente.
+    eliminado_en = models.DateTimeField(null=True, blank=True)
+    eliminado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='trabajos_enviados_a_papelera'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TrabajoNoEliminadoManager()
+    todos = models.Manager()
 
     def save(self, *args, **kwargs):
         terminado = self.avance >= 100 or self.estado == self.Estado.TERMINADO
@@ -110,7 +132,9 @@ class TrabajoMaestranza(models.Model):
         if not self.correlativo:
             empresa = self.cliente.empresa
             if empresa:
-                ultimo = TrabajoMaestranza.objects.filter(
+                # Incluye los de la papelera: si no, al restaurar uno quedarían
+                # dos trabajos con el mismo número.
+                ultimo = TrabajoMaestranza.todos.filter(
                     cliente__empresa=empresa
                 ).order_by('-correlativo').first()
                 self.correlativo = (ultimo.correlativo + 1) if ultimo else 1
@@ -829,6 +853,9 @@ class HistorialEliminacion(models.Model):
         related_name='eliminaciones_realizadas'
     )
     fecha = models.DateTimeField(auto_now_add=True)
+    # Se marca cuando un trabajo de maestranza borrado antes de existir la
+    # papelera se recupera desde el historial (evita recuperarlo dos veces).
+    restaurado_en = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-fecha']
