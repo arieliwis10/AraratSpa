@@ -95,7 +95,7 @@ export default function PapeleraCotizaciones({ version, onRestaurada }) {
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-gray-600 uppercase">Folio {c.folio}</p>
                   <p className="text-sm font-bold text-dark mt-0.5">{c.empresa_nombre || c.mandante || '-'}</p>
-                  <p className="text-xs font-medium text-dark mt-0.5">Orden de trabajo: {origen(c) || '-'}</p>
+                  {origen(c) && <p className="text-xs font-medium text-dark mt-0.5">{origen(c)}</p>}
                   {c.obra && <p className="text-xs text-gray-500">{c.obra}</p>}
                   <p className="text-xs text-gray-500 mt-1">
                     🗑 Eliminada {formatearFecha(c.eliminado_en)}
