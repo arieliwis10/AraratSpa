@@ -407,3 +407,28 @@ class FormatosDescripcionHistorialTests(TestCase):
         manual = HistorialEliminacion.objects.create(tipo='Cotización', descripcion='Folio 2', detalle={'orden_trabajo': 'OT #55'})
         self.assertEqual(HistorialEliminacionSerializer(viejo).data['detalle']['orden_trabajo'], '#9 Soldadura')
         self.assertEqual(HistorialEliminacionSerializer(manual).data['detalle']['orden_trabajo'], 'OT #55')
+
+
+class RecuperarTrabajoConNumeroOcupadoTests(TestCase):
+    """Si el número del trabajo borrado ya lo usa otro trabajo de la empresa, se le asigna uno nuevo."""
+
+    def test_numero_ocupado(self):
+        from .models import HistorialEliminacion
+        admin = Usuario.objects.create_user('admin', password='x', rol='ADMIN')
+        empresa = Empresa.objects.create(nombre='Minera Sur')
+        cliente = Usuario.objects.create_user('cli', password='x', rol='CLIENTE', empresa=empresa)
+        actual = TrabajoMaestranza.objects.create(
+            cliente=cliente, categoria='SOLDADURA', descripcion='Actual', centro_costo='c', correlativo=25,
+        )
+        registro = HistorialEliminacion.objects.create(
+            tipo='Trabajo de Maestranza', descripcion='#25 Soldadura - Minera Sur',
+            detalle={'descripcion_trabajo': 'Borrado', 'centro_costo': 'c'},
+        )
+        api = APIClient()
+        api.force_authenticate(admin)
+        res = api.post(f'/api/historial-eliminaciones/{registro.id}/recuperar_trabajo/', {}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['correlativo'], 26)
+        self.assertIn('#25 ya lo usa otro trabajo', res.data['avisos'][0])
+        actual.refresh_from_db()
+        self.assertEqual(actual.correlativo, 25)

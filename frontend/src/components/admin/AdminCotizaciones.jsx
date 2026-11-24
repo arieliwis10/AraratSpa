@@ -493,13 +493,11 @@ async function handleEliminar(c) {
               <div>
                 <p className="text-xs font-bold text-primary uppercase">Folio {c.folio}</p>
                 <p className="text-sm font-bold text-dark mt-0.5">{c.empresa_nombre || c.mandante || '-'}</p>
+                <p className="text-xs font-medium text-dark mt-0.5">
+                  Orden de trabajo: {calcularLabelOrigen(c)}
+                </p>
                 {c.obra && <p className="text-xs text-gray-500 mt-0.5">{c.obra}</p>}
                 <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(c.created_at)}</p>
-                {esDeMaestranza(c) && (
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    Orden de trabajo: {calcularLabelOrigen(c)}
-                  </p>
-                )}
                 <EtiquetaCierre c={c} />
                 {esDeMaestranza(c) && !c.trabajo && (
                   <div>
