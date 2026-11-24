@@ -85,6 +85,54 @@ class RegistraEliminacionMixin:
         instance.delete()
 
 
+class PapeleraMixin(RegistraEliminacionMixin):
+    """
+    Mixin para ViewSets de modelos con papelera (campos eliminado_en /
+    eliminado_por y managers objects/todos):
+      - DELETE /recurso/<id>/                      -> manda a la papelera
+      - GET    /recurso/papelera/                  -> lista la papelera
+      - POST   /recurso/<id>/restaurar/            -> la saca de la papelera
+      - DELETE /recurso/<id>/eliminar_definitivo/  -> borrado real (queda en el historial)
+    El get_queryset del ViewSet debe devolver get_queryset_papelera() cuando
+    self.en_papelera() es True, y las acciones deben quedar solo para admin.
+    """
+    ACCIONES_PAPELERA = ('papelera', 'restaurar', 'eliminar_definitivo')
+
+    def en_papelera(self):
+        return self.action in self.ACCIONES_PAPELERA
+
+    def get_queryset_papelera(self):
+        modelo = self.get_serializer_class().Meta.model
+        if self.request.user.rol != 'ADMIN':
+            return modelo.todos.none()
+        return modelo.todos.filter(
+            eliminado_en__isnull=False
+        ).select_related('eliminado_por').order_by('-eliminado_en')
+
+    def perform_destroy(self, instance):
+        # .update() en vez de save(): no dispara la lógica del save() del modelo.
+        type(instance).todos.filter(pk=instance.pk).update(
+            eliminado_en=timezone.now(), eliminado_por=self.request.user
+        )
+
+    @action(detail=False, methods=['get'])
+    def papelera(self, request):
+        return Response(self.get_serializer(self.get_queryset(), many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def restaurar(self, request, pk=None):
+        obj = self.get_object()
+        type(obj).todos.filter(pk=obj.pk).update(eliminado_en=None, eliminado_por=None)
+        obj.refresh_from_db()
+        return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=['delete'])
+    def eliminar_definitivo(self, request, pk=None):
+        # Borrado real: queda registrado en el Historial de eliminaciones.
+        super().perform_destroy(self.get_object())
+        return Response(status=204)
+
+
 # URL pública donde queda alojado el logo (reemplaza por la ruta real una vez que lo subas)
 LOGO_URL = 'https://araratchile.com/wp-content/uploads/2023/02/Logos-16-1536x521.png'
 
@@ -1053,7 +1101,7 @@ def _notificar_modalidad_admin(trabajo):
     )
 
 
-class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
+class TrabajoMaestranzaViewSet(PapeleraMixin, viewsets.ModelViewSet):
     serializer_class = TrabajoMaestranzaSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -1085,6 +1133,7 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
 
         empresa = instance.cliente.empresa if instance.cliente else None
         return {
+            'orden_trabajo': f"#{instance.correlativo} {instance.get_categoria_display()}",
             'descripcion_trabajo': instance.descripcion,
             'centro_costo': instance.centro_costo,
             'responsable': instance.responsable.nombre if instance.responsable else None,
@@ -1104,30 +1153,25 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
                     {'nombre': m.nombre, 'cantidad': m.cantidad}
                     for m in instance.materiales.all()
                 ],
+                # Al borrar el trabajo sus cotizaciones quedan sin trabajo;
+                # al recuperarlo desde el historial se vuelven a vincular.
+                'cotizaciones': list(instance.cotizaciones.values_list('id', flat=True)),
             },
         }
 
 
-    # Acciones que trabajan sobre los trabajos que están en la papelera.
-    ACCIONES_PAPELERA = ('papelera', 'restaurar', 'eliminar_definitivo')
-
     def get_queryset(self):
         user = self.request.user
-        if self.action in self.ACCIONES_PAPELERA:
-            # Solo el admin llega acá (get_permissions), pero por las dudas.
-            if user.rol != 'ADMIN':
-                return TrabajoMaestranza.todos.none()
-            return TrabajoMaestranza.todos.filter(
-                eliminado_en__isnull=False
-            ).select_related(
-                'cliente__empresa', 'responsable', 'asignado_a', 'eliminado_por'
+        if self.en_papelera():
+            return self.get_queryset_papelera().select_related(
+                'cliente__empresa', 'responsable', 'asignado_a'
             ).prefetch_related(
                 'fotos', 'materiales', 'cotizaciones',
                 models.Prefetch(
                     'comentarios',
                     queryset=ComentarioTrabajo.objects.select_related('autor', 'responsable'),
                 ),
-            ).order_by('-eliminado_en')
+            )
 
         qs = TrabajoMaestranza.objects.select_related(
             'cliente__empresa', 'responsable', 'asignado_a',
@@ -1159,36 +1203,9 @@ class TrabajoMaestranzaViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
             return [EsAdmin()]
         return [permissions.IsAuthenticated()]
 
-    def perform_destroy(self, instance):
-        """
-        "Eliminar trabajo" ya no borra: lo manda a la papelera. Desde ahí se
-        puede restaurar tal cual (con fotos, materiales, comentarios, ficha de
-        flexibles y cotizaciones) o eliminar definitivamente.
-        """
-        instance.eliminado_en = timezone.now()
-        instance.eliminado_por = self.request.user
-        instance.save(update_fields=['eliminado_en', 'eliminado_por', 'updated_at'])
-
-    @action(detail=False, methods=['get'])
-    def papelera(self, request):
-        trabajos = self.get_queryset()
-        return Response(self.get_serializer(trabajos, many=True).data)
-
-    @action(detail=True, methods=['post'])
-    def restaurar(self, request, pk=None):
-        trabajo = self.get_object()
-        trabajo.eliminado_en = None
-        trabajo.eliminado_por = None
-        trabajo.save(update_fields=['eliminado_en', 'eliminado_por', 'updated_at'])
-        return Response(self.get_serializer(trabajo).data)
-
-    @action(detail=True, methods=['delete'])
-    def eliminar_definitivo(self, request, pk=None):
-        trabajo = self.get_object()
-        # Borrado real: queda registrado en el Historial de eliminaciones
-        # (con los datos necesarios para recuperarlo desde ahí si hiciera falta).
-        RegistraEliminacionMixin.perform_destroy(self, trabajo)
-        return Response(status=204)
+    # "Eliminar trabajo" lo manda a la papelera (PapeleraMixin): se restaura
+    # tal cual (fotos, materiales, comentarios, ficha de flexibles y
+    # cotizaciones) o se elimina definitivamente.
 
     def perform_create(self, serializer):
         cliente = self.request.user
@@ -2056,7 +2073,7 @@ class ResumenClienteView(APIView):
 
         return Response({'maestranza': maestranza, 'arriendos': arriendos})
 
-class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
+class CotizacionViewSet(PapeleraMixin, viewsets.ModelViewSet):
     serializer_class = CotizacionSerializer
     permission_classes = [EsAdmin]
     historial_tipo = 'Cotización'
@@ -2065,8 +2082,60 @@ class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         nombre = instance.empresa.nombre if instance.empresa else (instance.mandante or 'Sin empresa')
         return f"Folio {instance.folio} — {nombre}"
 
+    @staticmethod
+    def _orden_trabajo(instance):
+        """Mismo texto de "Orden de trabajo" que sale en el PDF."""
+        if instance.trabajo:
+            return f"#{instance.trabajo.correlativo} {instance.trabajo.get_categoria_display()}"
+        if instance.reserva_maquina:
+            return f"Arriendo — {instance.reserva_maquina.maquina.nombre}"
+        if instance.pedido_ferreteria:
+            return f"Pedido — {instance.pedido_ferreteria.get_categoria_display()}"
+        if instance.pedido_gas:
+            return 'Pedido — Gas Licuado'
+        return instance.orden_trabajo_manual or None
+
+    def historial_detalle(self, instance):
+        items = [
+            f"{it.get('detalle') or '-'} (x{it.get('cantidad') or 1})"
+            for it in (instance.items or []) if isinstance(it, dict)
+        ]
+        total = f"${instance.total:,.0f}".replace(',', '.') if instance.total is not None else None
+        return {
+            # Se muestran en el historial para reconocer cuál cotización era.
+            'orden_trabajo': self._orden_trabajo(instance),
+            'descripcion_trabajo': instance.trabajo.descripcion if instance.trabajo else None,
+            'obra': instance.obra or None,
+            'items_resumen': ', '.join(items) or None,
+            'total': total,
+            # Copia completa (no se muestra en pantalla) para poder
+            # reconstruirla después de eliminarla definitivamente.
+            'datos': {
+                'folio': instance.folio,
+                'empresa_id': instance.empresa_id,
+                'trabajo_id': instance.trabajo_id,
+                'reserva_maquina_id': instance.reserva_maquina_id,
+                'pedido_ferreteria_id': instance.pedido_ferreteria_id,
+                'pedido_gas_id': instance.pedido_gas_id,
+                'creado_por_id': instance.creado_por_id,
+                'cliente_email': instance.cliente_email,
+                'orden_trabajo_manual': instance.orden_trabajo_manual,
+                'obra': instance.obra,
+                'mandante': instance.mandante,
+                'lugar_trabajo': instance.lugar_trabajo,
+                'validez_dias': instance.validez_dias,
+                'items': instance.items,
+                'notas': instance.notas,
+                'subtotal': str(instance.subtotal),
+                'iva': str(instance.iva),
+                'total': str(instance.total),
+                'created_at': instance.created_at.isoformat() if instance.created_at else None,
+            },
+        }
+
     def get_queryset(self):
-        return Cotizacion.objects.select_related(
+        base = self.get_queryset_papelera() if self.en_papelera() else Cotizacion.objects.all()
+        return base.select_related(
             'trabajo', 'empresa', 'reserva_maquina__maquina', 'pedido_ferreteria'
         ).prefetch_related('empresa__clientes')
 
@@ -2115,8 +2184,39 @@ class CotizacionViewSet(RegistraEliminacionMixin, viewsets.ModelViewSet):
         serializer.save(empresa=empresa, bloqueada=True)
 
     def perform_destroy(self, instance):
+        # Manda a la papelera (PapeleraMixin); las bloqueadas/facturadas no se eliminan.
         self._verificar_editable(instance)
         super().perform_destroy(instance)
+
+    @action(detail=True, methods=['patch'])
+    def vincular_trabajo(self, request, pk=None):
+        """
+        Cambia solo el trabajo de maestranza al que corresponde la cotización
+        (o la deja sin trabajo con trabajo=null). No toca ítems ni montos, por
+        eso se permite aunque esté bloqueada o facturada: sirve para volver a
+        asociar cotizaciones cuyo trabajo se borró.
+        """
+        cotizacion = self.get_object()
+        if cotizacion.reserva_maquina_id or cotizacion.pedido_ferreteria_id or cotizacion.pedido_gas_id:
+            return Response({'error': 'Esta cotización no es de Maestranza.'}, status=400)
+
+        trabajo_id = request.data.get('trabajo')
+        trabajo = None
+        if trabajo_id:
+            trabajo = TrabajoMaestranza.objects.select_related('cliente__empresa').filter(pk=trabajo_id).first()
+            if not trabajo:
+                return Response({'error': 'El trabajo no existe o está en la papelera.'}, status=400)
+            empresa_trabajo = trabajo.cliente.empresa_id if trabajo.cliente else None
+            if cotizacion.empresa_id and empresa_trabajo != cotizacion.empresa_id:
+                return Response({'error': 'El trabajo es de otra empresa que la cotización.'}, status=400)
+
+        cotizacion.trabajo = trabajo
+        campos = ['trabajo']
+        if trabajo and not cotizacion.empresa_id and trabajo.cliente and trabajo.cliente.empresa_id:
+            cotizacion.empresa_id = trabajo.cliente.empresa_id
+            campos.append('empresa')
+        cotizacion.save(update_fields=campos)
+        return Response(self.get_serializer(cotizacion).data)
 
     @action(detail=True, methods=['patch'], permission_classes=[EsAdmin])
     def desbloquear(self, request, pk=None):
@@ -2365,6 +2465,27 @@ def _ruta_media_desde_url(url):
     return None
 
 
+# Formatos con que se ha guardado la descripción de un trabajo borrado:
+#   - desde el inicio (03-09-2026): "<Categoría> #<n> — <Empresa>"
+#   - después:                      "#<n> <Categoría> - <Empresa>"
+_FORMATOS_DESCRIPCION_TRABAJO = (
+    re.compile(r'^#(?P<n>\d+)\s+(?P<cat>.*?)\s+[-—]\s+(?P<emp>.*)$'),
+    re.compile(r'^(?P<cat>.*?)\s+#(?P<n>\d+)\s+[-—]\s+(?P<emp>.*)$'),
+)
+
+
+def parsear_descripcion_trabajo(texto):
+    """
+    Devuelve (correlativo, etiqueta de categoría, nombre de empresa) a partir
+    de la descripción guardada en el historial, o None si no calza.
+    """
+    for patron in _FORMATOS_DESCRIPCION_TRABAJO:
+        m = patron.match((texto or '').strip())
+        if m:
+            return int(m.group('n')), m.group('cat').strip(), m.group('emp').strip()
+    return None
+
+
 def info_recuperacion_trabajo(registro):
     """
     Lo que se puede deducir de un registro del historial para recuperar el
@@ -2381,13 +2502,13 @@ def info_recuperacion_trabajo(registro):
     categoria = datos.get('categoria')
     empresa_nombre = None
 
-    m = re.match(r'^#(\d+)\s+(.*?)\s+-\s+(.*)$', registro.descripcion or '')
-    if m:
-        correlativo = correlativo or int(m.group(1))
-        empresa_nombre = m.group(3).strip()
+    partes = parsear_descripcion_trabajo(registro.descripcion)
+    if partes:
+        numero, etiqueta_categoria, empresa_nombre = partes
+        correlativo = correlativo or numero
         if not categoria:
             etiquetas = {str(label): valor for valor, label in TrabajoMaestranza.Categoria.choices}
-            categoria = etiquetas.get(m.group(2).strip())
+            categoria = etiquetas.get(etiqueta_categoria)
 
     empresa = None
     if datos.get('empresa_id'):
@@ -2406,6 +2527,7 @@ def info_recuperacion_trabajo(registro):
         cliente_id = clientes[0].id
 
     return {
+        'tipo': 'trabajo',
         'correlativo': correlativo,
         'categoria': categoria,
         'estado': datos.get('estado'),
@@ -2417,6 +2539,30 @@ def info_recuperacion_trabajo(registro):
             for c in clientes
         ],
     }
+
+
+TIPO_HISTORIAL_COTIZACION = 'Cotización'
+
+
+def info_recuperacion_cotizacion(registro):
+    """
+    Una cotización se puede recuperar si al eliminarla definitivamente quedó
+    su copia completa en detalle['datos'] (las eliminadas antes de existir la
+    papelera solo guardaron "Folio X — Empresa": esas no).
+    """
+    if registro.tipo != TIPO_HISTORIAL_COTIZACION:
+        return None
+    datos = (registro.detalle or {}).get('datos') or {}
+    if 'items' not in datos:
+        return None
+    return {'tipo': 'cotizacion', 'folio': datos.get('folio'), 'total': datos.get('total')}
+
+
+def info_recuperacion(registro):
+    """Qué se puede recuperar de un registro del historial (None = nada)."""
+    if registro.restaurado_en:
+        return None
+    return info_recuperacion_trabajo(registro) or info_recuperacion_cotizacion(registro)
 
 
 class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -2434,6 +2580,76 @@ class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
         if tipo:
             qs = qs.filter(tipo=tipo)
         return qs
+
+    @action(detail=True, methods=['post'])
+    def recuperar_cotizacion(self, request, pk=None):
+        """
+        Recrea una cotización eliminada definitivamente desde la papelera, con
+        su copia guardada en el historial: mismos ítems, montos, datos y
+        fecha. Vuelve desbloqueada (así estaba cuando se eliminó: las
+        bloqueadas o facturadas no se pueden eliminar).
+        """
+        registro = self.get_object()
+        if registro.restaurado_en:
+            return Response({'error': 'Esta cotización ya fue recuperada.'}, status=400)
+        if not info_recuperacion_cotizacion(registro):
+            return Response({'error': 'Este registro no tiene los datos para recuperar la cotización.'}, status=400)
+
+        datos = registro.detalle['datos']
+        avisos = []
+
+        # Folio original, salvo que ya lo use otra cotización (entonces se
+        # deja vacío y save() asigna uno nuevo).
+        folio = datos.get('folio') or ''
+        if folio and Cotizacion.todos.filter(folio=folio).exists():
+            avisos.append(f'El folio {folio} ya lo usa otra cotización; se asignó uno nuevo.')
+            folio = ''
+
+        # Vínculos: solo si lo vinculado sigue existiendo.
+        def existente(modelo, pk, descripcion, manager='objects'):
+            if not pk:
+                return None
+            obj = getattr(modelo, manager).filter(pk=pk).first()
+            if not obj:
+                avisos.append(f'{descripcion} ya no existe: la cotización vuelve sin ese vínculo.')
+            return obj
+
+        with transaction.atomic():
+            cotizacion = Cotizacion(
+                folio=folio,
+                empresa=existente(Empresa, datos.get('empresa_id'), 'La empresa'),
+                trabajo=existente(TrabajoMaestranza, datos.get('trabajo_id'), 'El trabajo de maestranza', 'todos'),
+                reserva_maquina=existente(ReservaMaquina, datos.get('reserva_maquina_id'), 'El arriendo de máquina'),
+                pedido_ferreteria=existente(PedidoFerreteria, datos.get('pedido_ferreteria_id'), 'El pedido de ferretería'),
+                pedido_gas=existente(PedidoGas, datos.get('pedido_gas_id'), 'El pedido de gas'),
+                creado_por=Usuario.objects.filter(pk=datos.get('creado_por_id')).first() if datos.get('creado_por_id') else None,
+                cliente_email=datos.get('cliente_email'),
+                orden_trabajo_manual=datos.get('orden_trabajo_manual') or '',
+                obra=datos.get('obra') or '',
+                mandante=datos.get('mandante') or '',
+                lugar_trabajo=datos.get('lugar_trabajo') or '',
+                validez_dias=datos.get('validez_dias') or 10,
+                items=datos.get('items') or [],
+                notas=datos.get('notas') or '',
+                subtotal=datos.get('subtotal') or 0,
+                iva=datos.get('iva') or 0,
+                total=datos.get('total') or 0,
+                bloqueada=False,
+            )
+            cotizacion.save()
+            if datos.get('created_at'):
+                # Conserva su fecha original (los filtros por mes la usan).
+                Cotizacion.todos.filter(pk=cotizacion.pk).update(created_at=datos['created_at'])
+
+            registro.restaurado_en = timezone.now()
+            registro.save(update_fields=['restaurado_en'])
+
+        cotizacion.refresh_from_db()
+        return Response({
+            'cotizacion_id': cotizacion.id,
+            'folio': cotizacion.folio,
+            'avisos': avisos,
+        }, status=201)
 
     @action(detail=True, methods=['post'])
     def recuperar_trabajo(self, request, pk=None):
@@ -2525,6 +2741,15 @@ class HistorialEliminacionViewSet(viewsets.ReadOnlyModelViewSet):
                 MaterialUsado.objects.create(
                     trabajo=trabajo, nombre=mat.get('nombre', ''), cantidad=mat.get('cantidad', '')
                 )
+
+            # Solo las que siguen sin trabajo (no se le quitan a otro trabajo).
+            ids_cotizaciones = datos.get('cotizaciones') or []
+            if ids_cotizaciones:
+                revinculadas = Cotizacion.todos.filter(
+                    pk__in=ids_cotizaciones, trabajo__isnull=True
+                ).update(trabajo=trabajo)
+                if revinculadas:
+                    avisos.append(f'Se volvieron a vincular {revinculadas} cotización(es).')
 
             registro.restaurado_en = timezone.now()
             registro.save(update_fields=['restaurado_en'])

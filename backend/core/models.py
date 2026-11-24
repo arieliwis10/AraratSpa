@@ -41,12 +41,13 @@ class Usuario(AbstractUser):
         return f"{self.username} ({self.get_rol_display()})"
 
 
-class TrabajoNoEliminadoManager(models.Manager):
+class SinPapeleraManager(models.Manager):
     """
-    Manager por defecto de TrabajoMaestranza: oculta los trabajos que están
-    en la papelera. Así todos los listados, conteos y relaciones inversas
-    (cliente.trabajos_maestranza, etc.) los ignoran sin tener que acordarse
-    de filtrar en cada lugar. Para verlos usar TrabajoMaestranza.todos.
+    Manager por defecto de los modelos con papelera (TrabajoMaestranza,
+    Cotizacion): oculta lo que está en la papelera. Así todos los listados,
+    conteos y relaciones inversas (cliente.trabajos_maestranza,
+    trabajo.cotizaciones, etc.) lo ignoran sin tener que acordarse de filtrar
+    en cada lugar. Para verlo usar Modelo.todos.
     """
     def get_queryset(self):
         return super().get_queryset().filter(eliminado_en__isnull=True)
@@ -116,7 +117,7 @@ class TrabajoMaestranza(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    objects = TrabajoNoEliminadoManager()
+    objects = SinPapeleraManager()
     todos = models.Manager()
 
     def save(self, *args, **kwargs):
@@ -804,7 +805,18 @@ class Cotizacion(models.Model):
     numero_factura = models.CharField(max_length=50, blank=True)
     fecha_factura = models.DateTimeField(null=True, blank=True)
 
+    # Papelera: si eliminado_en tiene fecha, la cotización está en la
+    # papelera (oculta) y se puede restaurar o eliminar definitivamente.
+    eliminado_en = models.DateTimeField(null=True, blank=True)
+    eliminado_por = models.ForeignKey(
+        Usuario, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cotizaciones_enviadas_a_papelera'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = SinPapeleraManager()
+    todos = models.Manager()
 
     class Meta:
         ordering = ['-created_at']
@@ -816,7 +828,8 @@ class Cotizacion(models.Model):
     def save(self, *args, **kwargs):
         if not self.folio:
             prefijo = timezone.now().strftime('%Y%m')
-            ultimo = Cotizacion.objects.filter(folio__startswith=f'{prefijo}_').order_by('-id').first()
+            # Incluye las de la papelera para no repetir folios al restaurarlas.
+            ultimo = Cotizacion.todos.filter(folio__startswith=f'{prefijo}_').order_by('-id').first()
             ultimo_num = 0
             if ultimo:
                 try:

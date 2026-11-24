@@ -369,6 +369,13 @@ class CotizacionSerializer(serializers.ModelSerializer):
     reserva_maquina_fecha_inicio = serializers.DateField(source='reserva_maquina.fecha_inicio', read_only=True, default=None)
     reserva_maquina_fecha_fin = serializers.DateField(source='reserva_maquina.fecha_fin', read_only=True, default=None)
     pedido_ferreteria_categoria_display = serializers.CharField(source='pedido_ferreteria.get_categoria_display', read_only=True, default=None)
+    # Acepta también trabajos en la papelera: al editar una cotización el
+    # frontend reenvía su trabajo, y no debe fallar porque el trabajo se haya
+    # eliminado. (Por defecto usaría TrabajoMaestranza.objects, que los oculta.)
+    trabajo = serializers.PrimaryKeyRelatedField(
+        queryset=TrabajoMaestranza.todos.all(), allow_null=True, required=False
+    )
+    eliminado_por_nombre = serializers.SerializerMethodField()
 
     class Meta:
         model = Cotizacion
@@ -382,10 +389,17 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
             'bloqueada', 'numero_factura', 'fecha_factura',
+            'eliminado_en', 'eliminado_por_nombre',
         ]
         # bloqueo/factura solo cambian por sus acciones dedicadas (desbloquear
         # con clave, registrar_factura), nunca por un PATCH normal.
-        read_only_fields = ['created_at', 'bloqueada', 'numero_factura', 'fecha_factura']
+        read_only_fields = ['created_at', 'bloqueada', 'numero_factura', 'fecha_factura', 'eliminado_en']
+
+    def get_eliminado_por_nombre(self, obj):
+        usuario = obj.eliminado_por
+        if not usuario:
+            return None
+        return f"{usuario.first_name} {usuario.last_name}".strip() or usuario.username
 
     def get_empresa_email(self, obj):
         if not obj.empresa:
@@ -416,13 +430,33 @@ class HistorialEliminacionSerializer(serializers.ModelSerializer):
         ]
 
     recuperacion = serializers.SerializerMethodField()
+    detalle = serializers.SerializerMethodField()
+
+    def get_detalle(self, obj):
+        detalle = dict(obj.detalle or {})
+        # Trabajos borrados antes de guardar 'orden_trabajo': se saca del
+        # texto de la descripción ("#12 Soldadura - Empresa", etc.).
+        if obj.tipo == 'Trabajo de Maestranza' and not detalle.get('orden_trabajo'):
+            from .views import parsear_descripcion_trabajo
+            partes = parsear_descripcion_trabajo(obj.descripcion)
+            if partes:
+                detalle['orden_trabajo'] = f"#{partes[0]} {partes[1]}"
+        # Cotizaciones eliminadas cuando su orden de trabajo se guardaba como
+        # "Soldadura #12": se muestra "#12 Soldadura". Solo si es una
+        # categoría de maestranza (no se tocan las escritas a mano).
+        orden = detalle.get('orden_trabajo')
+        if obj.tipo == 'Cotización' and isinstance(orden, str):
+            import re
+            m = re.match(r'^(?P<cat>.+?)\s+#(?P<n>\d+)$', orden.strip())
+            etiquetas = {str(label) for _, label in TrabajoMaestranza.Categoria.choices}
+            if m and m.group('cat') in etiquetas:
+                detalle['orden_trabajo'] = f"#{m.group('n')} {m.group('cat')}"
+        return detalle
 
     def get_recuperacion(self, obj):
-        """Datos para el botón "Recuperar trabajo" (solo trabajos de maestranza aún no recuperados)."""
-        if obj.restaurado_en:
-            return None
-        from .views import info_recuperacion_trabajo
-        return info_recuperacion_trabajo(obj)
+        """Datos para el botón "Recuperar" (trabajos de maestranza y cotizaciones aún no recuperados)."""
+        from .views import info_recuperacion
+        return info_recuperacion(obj)
 
     def get_eliminado_por_nombre(self, obj):
         if not obj.eliminado_por:

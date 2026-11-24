@@ -4,8 +4,10 @@ import { generarCotizacionPDF, generarCotizacionPDFBase64 } from '../../utils/ge
 import CotizacionModal from '../CotizacionModal'
 import {
   getCotizaciones, eliminarCotizacion, enviarCorreoCotizacion,
-  desbloquearCotizacion, bloquearCotizacion, registrarFacturaCotizacion,
+  desbloquearCotizacion, bloquearCotizacion, registrarFacturaCotizacion, vincularTrabajoCotizacion,
 } from '../../api/cotizaciones'
+import { getTrabajos } from '../../api/maestranza'
+import PapeleraCotizaciones from './PapeleraCotizaciones'
 
 const MESES = [
   { valor: '01', label: 'Enero' },
@@ -49,7 +51,7 @@ function pasaFiltro(fechaISO, empresaId, filtroEmpresa, filtroAnio, filtroMes) {
 // un arriendo de máquina, o una orden de trabajo escrita a mano (cotización suelta).
 function calcularLabelOrigen(c) {
   if (c.trabajo_categoria_display && c.trabajo_correlativo) {
-    return `${c.trabajo_categoria_display} #${c.trabajo_correlativo}`
+    return `#${c.trabajo_correlativo} ${c.trabajo_categoria_display}`
   }
   if (c.reserva_maquina_maquina_nombre) {
     return `Arriendo — ${c.reserva_maquina_maquina_nombre}`
@@ -284,10 +286,91 @@ function FiltrosComunes({
   )
 }
 
+function esDeMaestranza(c) {
+  return !c.reserva_maquina && !c.pedido_ferreteria && !c.pedido_gas
+}
+
+// Vincula una cotización de Maestranza sin trabajo a un trabajo. Funciona
+// aunque esté bloqueada o facturada (no toca ítems ni montos): sirve para
+// volver a asociar cotizaciones cuyo trabajo se borró.
+function VincularTrabajo({ c, onActualizada }) {
+  const [abierto, setAbierto] = useState(false)
+  const [trabajos, setTrabajos] = useState(null)
+  const [seleccion, setSeleccion] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  async function abrir() {
+    setAbierto(true)
+    if (trabajos) return
+    try {
+      // Con empresa: solo sus trabajos (el backend no deja vincular a otra empresa).
+      const res = await getTrabajos(c.empresa ? { empresa: c.empresa } : {})
+      setTrabajos(res.data)
+    } catch {
+      setTrabajos([])
+    }
+  }
+
+  async function guardar() {
+    setGuardando(true)
+    try {
+      const res = await vincularTrabajoCotizacion(c.id, Number(seleccion))
+      onActualizada(res.data)
+      setAbierto(false)
+    } catch (err) {
+      alert(mensajeError(err, 'No se pudo vincular la cotización.'))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <button type="button" onClick={abrir} className="text-xs text-primary font-medium hover:underline mt-1">
+        🔗 Vincular a trabajo
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2 bg-gray-50 rounded p-2 flex flex-col gap-2 max-w-md">
+      {trabajos === null ? (
+        <p className="text-xs text-gray-500">Cargando trabajos...</p>
+      ) : (
+        <select
+          value={seleccion}
+          onChange={(e) => setSeleccion(e.target.value)}
+          className="border rounded p-1.5 text-sm bg-white w-full"
+        >
+          <option value="">Selecciona un trabajo</option>
+          {trabajos.map((t) => (
+            <option key={t.id} value={t.id}>
+              #{t.correlativo} {t.categoria_display} — {t.empresa_nombre || t.cliente_nombre} — {(t.descripcion || '').slice(0, 40)}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={guardar}
+          disabled={guardando || trabajos === null || !seleccion}
+          className="bg-primary text-white px-3 py-1 rounded text-xs font-medium hover:bg-primary-light disabled:opacity-60"
+        >
+          {guardando ? 'Guardando...' : 'Guardar'}
+        </button>
+        <button type="button" onClick={() => setAbierto(false)} className="text-xs text-gray-500 hover:underline">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Lista de tarjetas de cotizaciones ya generadas (Folio / Editar / Descargar
 // PDF / Enviar correo / WhatsApp). Sirve tanto para las de Maestranza como
 // para las de arriendo de máquinas — `filtroOrigen` decide cuáles mostrar.
-function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrigen, mensajeVacio, onEditar }) {
+function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrigen, mensajeVacio, onEditar, onEliminada }) {
   const [cotizaciones, setCotizaciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [enviandoId, setEnviandoId] = useState(null)
@@ -295,7 +378,7 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
 
 async function handleEliminar(c) {
   const confirmado = window.confirm(
-    `¿Eliminar la cotización folio ${c.folio}? Esta acción no se puede deshacer.`
+    `¿Enviar la cotización folio ${c.folio} a la papelera? Podrás restaurarla desde ahí.`
   )
   if (!confirmado) return
 
@@ -303,6 +386,7 @@ async function handleEliminar(c) {
   try {
     await eliminarCotizacion(c.id)
     setCotizaciones((prev) => prev.filter((item) => item.id !== c.id))
+    onEliminada?.()
   } catch (err) {
     alert(mensajeError(err, 'No se pudo eliminar la cotización. Intenta de nuevo.'))
   } finally {
@@ -411,7 +495,17 @@ async function handleEliminar(c) {
                 <p className="text-sm font-bold text-dark mt-0.5">{c.empresa_nombre || c.mandante || '-'}</p>
                 {c.obra && <p className="text-xs text-gray-500 mt-0.5">{c.obra}</p>}
                 <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(c.created_at)}</p>
+                {esDeMaestranza(c) && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Orden de trabajo: {calcularLabelOrigen(c)}
+                  </p>
+                )}
                 <EtiquetaCierre c={c} />
+                {esDeMaestranza(c) && !c.trabajo && (
+                  <div>
+                    <VincularTrabajo c={c} onActualizada={reemplazarCotizacion} />
+                  </div>
+                )}
               </div>
               <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
                 <span className="text-primary font-medium text-sm">
@@ -472,6 +566,8 @@ export default function AdminCotizaciones() {
   // null = cerrado | 'nueva' = plantilla en blanco | objeto cotización = editando
   const [modalCotizacion, setModalCotizacion] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  // Sube cada vez que una cotización va a la papelera, para que esta se recargue.
+  const [versionPapelera, setVersionPapelera] = useState(0)
 
   useEffect(() => {
     getEmpresas().then((res) => setEmpresas(res.data))
@@ -524,6 +620,11 @@ export default function AdminCotizaciones() {
         setFiltroAnio={setFiltroAnio}
       />
 
+      <PapeleraCotizaciones
+        version={versionPapelera}
+        onRestaurada={() => setRefreshKey((k) => k + 1)}
+      />
+
       {tipo === 'maestranza' && (
         <SeccionCotizaciones
           key={`maestranza-${refreshKey}`}
@@ -533,6 +634,7 @@ export default function AdminCotizaciones() {
           filtroOrigen={(c) => !!c.trabajo || esCotizacionSuelta(c)} 
           mensajeVacio="No hay cotizaciones de Maestranza con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
+          onEliminada={() => setVersionPapelera((v) => v + 1)}
         />
       )}
       {tipo === 'maquinas' && (
@@ -544,6 +646,7 @@ export default function AdminCotizaciones() {
           filtroOrigen={(c) => !!c.reserva_maquina}
           mensajeVacio="No hay cotizaciones de arriendo de máquinas con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
+          onEliminada={() => setVersionPapelera((v) => v + 1)}
         />
       )}
       {tipo === 'ferreteria' && (
@@ -555,6 +658,7 @@ export default function AdminCotizaciones() {
           filtroOrigen={(c) => !!c.pedido_ferreteria}
           mensajeVacio="No hay cotizaciones de Ferretería con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
+          onEliminada={() => setVersionPapelera((v) => v + 1)}
         />
       )}
       {tipo === 'gas' && (
@@ -566,6 +670,7 @@ export default function AdminCotizaciones() {
           filtroOrigen={(c) => !!c.pedido_gas}
           mensajeVacio="No hay cotizaciones de Gas Licuado con este filtro."
           onEditar={(c) => setModalCotizacion(c)}
+          onEliminada={() => setVersionPapelera((v) => v + 1)}
         />
       )}
 

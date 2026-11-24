@@ -203,6 +203,7 @@ class PapeleraTrabajosTests(TestCase):
         self.assertFalse(TrabajoMaestranza.todos.filter(pk=self.trabajo.id).exists())
         registro = HistorialEliminacion.objects.get()
         self.assertEqual(registro.detalle['datos']['materiales'], [{'nombre': 'Electrodo', 'cantidad': '2 kg'}])
+        self.assertEqual(registro.detalle['orden_trabajo'], f'#{self.trabajo.correlativo} Soldadura')
 
         # ...y desde el historial se puede recuperar con sus materiales.
         res = self.api.post(f'/api/historial-eliminaciones/{registro.id}/recuperar_trabajo/', {}, format='json')
@@ -239,6 +240,7 @@ class PapeleraTrabajosTests(TestCase):
                 },
             )
             lista = self.api.get('/api/historial-eliminaciones/').data
+            self.assertEqual(lista[0]['detalle']['orden_trabajo'], '#7 Fabricación de equipos especiales y proyecto')
             info = lista[0]['recuperacion']
             self.assertEqual(info['categoria'], 'FABRICACION')
             self.assertEqual(info['correlativo'], 7)
@@ -259,3 +261,149 @@ class PapeleraTrabajosTests(TestCase):
             # No se puede recuperar dos veces.
             self.assertEqual(self.api.post(url, {}, format='json').status_code, 400)
             self.assertIsNone(self.api.get('/api/historial-eliminaciones/').data[0]['recuperacion'])
+
+
+class PapeleraYVinculoCotizacionesTests(TestCase):
+    """Eliminar una cotización la manda a la papelera; vincular_trabajo cambia solo su trabajo."""
+
+    def setUp(self):
+        self.admin = Usuario.objects.create_user('admin', password='x', rol='ADMIN')
+        self.empresa = Empresa.objects.create(nombre='Minera Sur')
+        self.cliente = Usuario.objects.create_user('cli', password='x', rol='CLIENTE', empresa=self.empresa)
+        self.trabajo = TrabajoMaestranza.objects.create(
+            cliente=self.cliente, categoria='SOLDADURA', descripcion='Soldar', centro_costo='CC',
+        )
+        self.api = APIClient()
+        self.api.force_authenticate(self.admin)
+
+    def _crear(self, **extra):
+        datos = {'mandante': 'X', 'items': [], 'subtotal': '100', 'iva': '19', 'total': '119', **extra}
+        res = self.api.post('/api/cotizaciones/', datos, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        return res.data['id']
+
+    def _desbloquear(self, cid):
+        self.api.patch(f'/api/cotizaciones/{cid}/desbloquear/', {'clave': 'x'})
+
+    def test_papelera(self):
+        from .models import HistorialEliminacion
+        cid = self._crear()
+        url = f'/api/cotizaciones/{cid}/'
+        # Bloqueada: no se puede mandar a la papelera.
+        self.assertEqual(self.api.delete(url).status_code, 403)
+        self._desbloquear(cid)
+        self.assertEqual(self.api.delete(url).status_code, 204)
+
+        self.assertEqual(self.api.get('/api/cotizaciones/').data, [])
+        papelera = self.api.get('/api/cotizaciones/papelera/').data
+        self.assertEqual([c['id'] for c in papelera], [cid])
+        self.assertFalse(HistorialEliminacion.objects.exists())
+
+        # Una cotización nueva no repite el folio de la que está en la papelera.
+        folio_papelera = papelera[0]['folio']
+        otra = self._crear()
+        self.assertNotEqual(Cotizacion.objects.get(pk=otra).folio, folio_papelera)
+
+        self.assertEqual(self.api.post(url + 'restaurar/').status_code, 200)
+        self.assertEqual(len(self.api.get('/api/cotizaciones/').data), 2)
+
+        self.api.delete(url)
+        self.assertEqual(self.api.delete(url + 'eliminar_definitivo/').status_code, 204)
+        self.assertFalse(Cotizacion.todos.filter(pk=cid).exists())
+        registro = HistorialEliminacion.objects.get(tipo='Cotización')
+        self.assertEqual(registro.detalle['datos']['total'], '119.00')
+
+    def test_recuperar_cotizacion_desde_historial(self):
+        from .models import HistorialEliminacion
+        cid = self._crear(trabajo=self.trabajo.id, obra='Galpón', items=[{'detalle': 'Soldadura', 'total': 100}])
+        original = Cotizacion.objects.get(pk=cid)
+        self._desbloquear(cid)
+        url = f'/api/cotizaciones/{cid}/'
+        self.api.delete(url)
+        self.api.delete(url + 'eliminar_definitivo/')
+
+        lista = self.api.get('/api/historial-eliminaciones/').data
+        self.assertEqual(lista[0]['recuperacion']['tipo'], 'cotizacion')
+        detalle = lista[0]['detalle']
+        self.assertEqual(detalle['orden_trabajo'], f'#{self.trabajo.correlativo} Soldadura')
+        self.assertEqual(detalle['descripcion_trabajo'], 'Soldar')
+        self.assertEqual(detalle['obra'], 'Galpón')
+        self.assertEqual(detalle['items_resumen'], 'Soldadura (x1)')
+        self.assertEqual(detalle['total'], '$119')
+        rid = lista[0]['id']
+
+        res = self.api.post(f'/api/historial-eliminaciones/{rid}/recuperar_cotizacion/')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data['avisos'], [])
+        c = Cotizacion.objects.get(pk=res.data['cotizacion_id'])
+        self.assertEqual((c.folio, c.obra, c.trabajo_id, c.total), (original.folio, 'Galpón', self.trabajo.id, original.total))
+        self.assertEqual(c.items, [{'detalle': 'Soldadura', 'total': 100}])
+        self.assertEqual(c.created_at, original.created_at)
+        self.assertFalse(c.bloqueada)
+
+        # No se recupera dos veces.
+        self.assertEqual(self.api.post(f'/api/historial-eliminaciones/{rid}/recuperar_cotizacion/').status_code, 400)
+        self.assertIsNone(self.api.get('/api/historial-eliminaciones/').data[0]['recuperacion'])
+
+    def test_vincular_trabajo_aunque_este_facturada(self):
+        cid = self._crear()  # sin trabajo ni empresa
+        self.api.patch(f'/api/cotizaciones/{cid}/registrar_factura/', {'numero_factura': '55'})
+        url = f'/api/cotizaciones/{cid}/vincular_trabajo/'
+
+        res = self.api.patch(url, {'trabajo': self.trabajo.id}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data['trabajo_correlativo'], self.trabajo.correlativo)
+        self.assertEqual(res.data['empresa'], self.empresa.id)  # toma la empresa del trabajo
+        self.assertEqual(res.data['numero_factura'], '55')
+
+        # Otra empresa: se rechaza.
+        otra = Empresa.objects.create(nombre='Otra')
+        cli2 = Usuario.objects.create_user('cli2', password='x', rol='CLIENTE', empresa=otra)
+        ajeno = TrabajoMaestranza.objects.create(cliente=cli2, categoria='TORNO', descripcion='t', centro_costo='c')
+        self.assertEqual(self.api.patch(url, {'trabajo': ajeno.id}, format='json').status_code, 400)
+
+        # Desvincular.
+        res = self.api.patch(url, {'trabajo': None}, format='json')
+        self.assertIsNone(res.data['trabajo'])
+
+    def test_editar_cotizacion_de_trabajo_en_papelera(self):
+        cid = self._crear(trabajo=self.trabajo.id)
+        self._desbloquear(cid)
+        self.api.delete(f'/api/trabajos-maestranza/{self.trabajo.id}/')
+        res = self.api.patch(f'/api/cotizaciones/{cid}/', {'trabajo': self.trabajo.id, 'obra': 'Nueva'}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+
+    def test_recuperar_trabajo_revincula_cotizaciones(self):
+        from .models import HistorialEliminacion
+        cid = self._crear(trabajo=self.trabajo.id)
+        url = f'/api/trabajos-maestranza/{self.trabajo.id}/'
+        self.api.delete(url)
+        self.api.delete(url + 'eliminar_definitivo/')
+        self.assertIsNone(Cotizacion.objects.get(pk=cid).trabajo)
+
+        registro = HistorialEliminacion.objects.get(tipo='Trabajo de Maestranza')
+        res = self.api.post(f'/api/historial-eliminaciones/{registro.id}/recuperar_trabajo/', {}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(Cotizacion.objects.get(pk=cid).trabajo_id, res.data['trabajo_id'])
+
+
+class FormatosDescripcionHistorialTests(TestCase):
+    """El historial guardó los trabajos borrados con dos formatos de texto distintos."""
+
+    def test_ambos_formatos(self):
+        from .views import parsear_descripcion_trabajo
+        self.assertEqual(parsear_descripcion_trabajo('#12 Soldadura - Minera Sur'), (12, 'Soldadura', 'Minera Sur'))
+        self.assertEqual(parsear_descripcion_trabajo('Soldadura #27 — Minera Sur'), (27, 'Soldadura', 'Minera Sur'))
+        self.assertEqual(
+            parsear_descripcion_trabajo('Fabricación de equipos especiales y proyecto #21 — A - B'),
+            (21, 'Fabricación de equipos especiales y proyecto', 'A - B'),
+        )
+        self.assertIsNone(parsear_descripcion_trabajo('texto cualquiera'))
+
+    def test_orden_trabajo_antigua_de_cotizacion_se_muestra_con_numero_primero(self):
+        from .models import HistorialEliminacion
+        from .serializers import HistorialEliminacionSerializer
+        viejo = HistorialEliminacion.objects.create(tipo='Cotización', descripcion='Folio 1', detalle={'orden_trabajo': 'Soldadura #9'})
+        manual = HistorialEliminacion.objects.create(tipo='Cotización', descripcion='Folio 2', detalle={'orden_trabajo': 'OT #55'})
+        self.assertEqual(HistorialEliminacionSerializer(viejo).data['detalle']['orden_trabajo'], '#9 Soldadura')
+        self.assertEqual(HistorialEliminacionSerializer(manual).data['detalle']['orden_trabajo'], 'OT #55')

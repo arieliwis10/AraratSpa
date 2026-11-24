@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getHistorialEliminaciones, recuperarTrabajoHistorial } from '../../api/historial'
+import {
+  getHistorialEliminaciones, recuperarTrabajoHistorial, recuperarCotizacionHistorial,
+} from '../../api/historial'
 import Spinner from '../Spinner'
 
 function formatFechaHora(fechaISO) {
@@ -7,21 +9,33 @@ function formatFechaHora(fechaISO) {
   return new Date(fechaISO).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+// Etiquetas, en el orden en que se muestran (la base de datos puede guardar
+// las claves del JSON en otro orden).
 const ETIQUETAS_DETALLE = {
+  orden_trabajo: 'Orden de trabajo',
   descripcion_trabajo: 'Descripción',
+  obra: 'Obra',
+  items_resumen: 'Ítems',
+  total: 'Total',
   centro_costo: 'Centro de costo',
   responsable: 'Responsable',
+}
+const ORDEN_DETALLE = Object.keys(ETIQUETAS_DETALLE)
+
+function posicion(clave) {
+  const i = ORDEN_DETALLE.indexOf(clave)
+  return i === -1 ? ORDEN_DETALLE.length : i
 }
 
 function DetalleEliminacion({ detalle }) {
   if (!detalle || Object.keys(detalle).length === 0) return null
 
-  // 'datos' son ids internos para poder recuperar el trabajo: no se muestran.
+  // 'datos' es la copia interna para poder recuperar: no se muestra.
   // eslint-disable-next-line no-unused-vars
   const { fotos, datos, ...resto } = detalle
-  const entradas = Object.entries(resto).filter(
-    ([, valor]) => valor !== null && valor !== undefined && valor !== ''
-  )
+  const entradas = Object.entries(resto)
+    .filter(([, valor]) => valor !== null && valor !== undefined && valor !== '')
+    .sort(([a], [b]) => posicion(a) - posicion(b))
   const tieneFotos = Array.isArray(fotos) && fotos.length > 0
 
   if (entradas.length === 0 && !tieneFotos) return null
@@ -162,6 +176,39 @@ function RecuperarTrabajo({ registro, onRecuperado }) {
   )
 }
 
+// Cotizaciones eliminadas definitivamente desde la papelera: se recrean
+// tal cual con la copia guardada en el historial.
+function RecuperarCotizacion({ registro, onRecuperado }) {
+  const [enviando, setEnviando] = useState(false)
+
+  async function recuperar() {
+    if (!confirm(`¿Recuperar la cotización folio ${registro.recuperacion.folio}?`)) return
+    setEnviando(true)
+    try {
+      const res = await recuperarCotizacionHistorial(registro.id)
+      const avisos = res.data.avisos?.length ? '\n\n' + res.data.avisos.join('\n') : ''
+      alert(`Cotización folio ${res.data.folio} recuperada. Ya aparece en Cotizaciones.${avisos}`)
+      onRecuperado()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Error al recuperar la cotización')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={recuperar}
+      disabled={enviando}
+      className="mt-2 text-primary text-xs font-medium hover:underline disabled:opacity-60 flex items-center gap-1"
+    >
+      {enviando && <Spinner />}
+      ↩ Recuperar cotización
+    </button>
+  )
+}
+
 export default function HistorialEliminaciones() {
   const [historial, setHistorial] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -214,8 +261,10 @@ export default function HistorialEliminaciones() {
                   <p className="mt-2 text-xs font-medium text-green-700">
                     ✓ Recuperado el {formatFechaHora(h.restaurado_en)}
                   </p>
-                ) : h.recuperacion && (
+                ) : h.recuperacion?.tipo === 'trabajo' ? (
                   <RecuperarTrabajo registro={h} onRecuperado={cargar} />
+                ) : h.recuperacion?.tipo === 'cotizacion' && (
+                  <RecuperarCotizacion registro={h} onRecuperado={cargar} />
                 )}
               </div>
               <div className="text-right text-xs text-gray-500 shrink-0">

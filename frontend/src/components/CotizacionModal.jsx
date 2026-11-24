@@ -150,7 +150,7 @@ export default function CotizacionModal({
   function calcularTrabajoLabel() {
     if (tieneTrabajoVinculado) {
       return esEdicion
-        ? `${cotizacionExistente.trabajo_categoria_display} #${cotizacionExistente.trabajo_correlativo}`
+        ? `#${cotizacionExistente.trabajo_correlativo} ${cotizacionExistente.trabajo_categoria_display}`
         : `#${trabajo.correlativo} ${trabajo.categoria_display}`
     }
     if (tieneReservaVinculada) {
@@ -243,7 +243,7 @@ export default function CotizacionModal({
             {esEdicion
               ? `Editar cotización — Folio ${cotizacionExistente.folio}`
               : trabajo
-                ? `Cotización — ${trabajo.categoria_display} #${trabajo.correlativo}`
+                ? `Cotización — #${trabajo.correlativo} ${trabajo.categoria_display}`
                 : reserva
                   ? `Cotización — Arriendo ${reserva.maquina_nombre}`
                   : pedido
