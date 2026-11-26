@@ -166,6 +166,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     estado_cotizacion = serializers.SerializerMethodField()
     numero_factura = serializers.SerializerMethodField()
     fecha_factura = serializers.SerializerMethodField()
+    folio_cotizacion = serializers.SerializerMethodField()
     eliminado_por_nombre = serializers.SerializerMethodField()
 
     class Meta:
@@ -178,7 +179,7 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
             'modalidad_entrega', 'direccion_entrega', 'retrasado', 'motivo_retraso',
             'fecha_retraso', 'materiales', 'comentarios', 'created_at', 'updated_at', 'detalle_flexible',
             'fecha_termino', 'estado_cotizacion', 'numero_factura', 'fecha_factura',
-            'eliminado_en', 'eliminado_por_nombre',
+            'folio_cotizacion', 'eliminado_en', 'eliminado_por_nombre',
         ]
         read_only_fields = ['cliente', 'correlativo', 'fecha_termino', 'eliminado_en']
 
@@ -209,6 +210,12 @@ class TrabajoMaestranzaSerializer(serializers.ModelSerializer):
     def get_fecha_factura(self, obj):
         fechas = [c.fecha_factura for c in obj.cotizaciones.all() if c.numero_factura and c.fecha_factura]
         return max(fechas) if fechas else None
+
+    # Folio(s) de la(s) cotización(es) del trabajo, para mostrarlo en las
+    # tarjetas de Terminados (admin y cliente).
+    def get_folio_cotizacion(self, obj):
+        folios = [c.folio for c in obj.cotizaciones.all() if c.folio]
+        return ', '.join(folios) or None
 
     def validate(self, data):
         # Solo exige responsable al crear un trabajo nuevo (no al editar/actualizar uno existente)
@@ -376,6 +383,9 @@ class CotizacionSerializer(serializers.ModelSerializer):
         queryset=TrabajoMaestranza.todos.all(), allow_null=True, required=False
     )
     eliminado_por_nombre = serializers.SerializerMethodField()
+    # Las mismas fotos del trabajo de Maestranza, para mostrarlas en la
+    # tarjeta de la cotización.
+    trabajo_fotos = serializers.SerializerMethodField()
 
     class Meta:
         model = Cotizacion
@@ -389,11 +399,16 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'folio', 'orden_trabajo_manual', 'obra', 'mandante', 'lugar_trabajo',
             'validez_dias', 'items', 'notas', 'subtotal', 'iva', 'total', 'created_at',
             'bloqueada', 'numero_factura', 'fecha_factura',
-            'eliminado_en', 'eliminado_por_nombre',
+            'eliminado_en', 'eliminado_por_nombre', 'trabajo_fotos',
         ]
         # bloqueo/factura solo cambian por sus acciones dedicadas (desbloquear
         # con clave, registrar_factura), nunca por un PATCH normal.
         read_only_fields = ['created_at', 'bloqueada', 'numero_factura', 'fecha_factura', 'eliminado_en']
+
+    def get_trabajo_fotos(self, obj):
+        if not obj.trabajo:
+            return []
+        return FotoTrabajoSerializer(obj.trabajo.fotos.all(), many=True, context=self.context).data
 
     def get_eliminado_por_nombre(self, obj):
         usuario = obj.eliminado_por

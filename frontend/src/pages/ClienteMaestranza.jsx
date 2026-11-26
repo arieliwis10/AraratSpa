@@ -9,6 +9,7 @@ import { CATEGORIAS } from '../constants/categorias'
 import FormularioTrabajo from '../components/FormularioTrabajo'
 import BadgeEstado from '../components/BadgeEstado'
 import VisorFoto from '../components/VisorFoto'
+import MiniaturasFotos from '../components/MiniaturasFotos'
 import fondoPanel from '../assets/fondo-panel.jpg'
 import CarritoFerreteria from '../components/CarritoFerreteria'
 import { EtiquetaCotizacion } from '../components/EstadoCotizacionTrabajo'
@@ -371,6 +372,9 @@ export default function ClienteMaestranza() {
                             <div className="flex flex-col items-end gap-1 shrink-0">
                               <BadgeEstado estado={t.estado} />
                               <EtiquetaCotizacion trabajo={t} />
+                              {t.folio_cotizacion && (
+                                <span className="text-xs font-bold text-primary whitespace-nowrap">Folio {t.folio_cotizacion}</span>
+                              )}
                               <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
                             </div>
                           </button>
@@ -382,6 +386,7 @@ export default function ClienteMaestranza() {
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-3">
                                 <span>Centro de costo: {t.centro_costo}</span>
                               </div>
+                              <MiniaturasFotos fotos={t.fotos} onVer={setFotoAmpliada} className="mb-3" />
                               <div className="bg-green-50 text-green-700 text-sm font-medium rounded p-2 text-center">
                                 {t.modalidad_entrega === 'RETIRO'
                                   ? '✅ Confirmado: Retiro en local'
@@ -465,6 +470,9 @@ export default function ClienteMaestranza() {
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
                               <EtiquetaCotizacion trabajo={t} />
+                              {t.folio_cotizacion && (
+                                <span className="text-xs font-bold text-blue-800 whitespace-nowrap">Folio {t.folio_cotizacion}</span>
+                              )}
                               <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
                             </div>
                           </button>
@@ -481,6 +489,7 @@ export default function ClienteMaestranza() {
                                   </span>
                                 )}
                               </div>
+                              <MiniaturasFotos fotos={t.fotos} onVer={setFotoAmpliada} className="mt-3" />
                             </div>
                           )}
                         </div>

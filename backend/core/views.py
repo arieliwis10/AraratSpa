@@ -2137,7 +2137,7 @@ class CotizacionViewSet(PapeleraMixin, viewsets.ModelViewSet):
         base = self.get_queryset_papelera() if self.en_papelera() else Cotizacion.objects.all()
         return base.select_related(
             'trabajo', 'empresa', 'reserva_maquina__maquina', 'pedido_ferreteria'
-        ).prefetch_related('empresa__clientes')
+        ).prefetch_related('empresa__clientes', 'trabajo__fotos')
 
     def _resolver_empresa(self, serializer, instance=None):
         empresa = serializer.validated_data.get('empresa')

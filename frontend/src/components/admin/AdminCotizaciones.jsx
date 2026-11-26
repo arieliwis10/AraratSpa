@@ -8,6 +8,8 @@ import {
 } from '../../api/cotizaciones'
 import { getTrabajos } from '../../api/maestranza'
 import PapeleraCotizaciones from './PapeleraCotizaciones'
+import MiniaturasFotos from '../MiniaturasFotos'
+import VisorFoto from '../VisorFoto'
 
 const MESES = [
   { valor: '01', label: 'Enero' },
@@ -375,6 +377,7 @@ function SeccionCotizaciones({ filtroEmpresa, filtroMes, filtroAnio, filtroOrige
   const [cargando, setCargando] = useState(true)
   const [enviandoId, setEnviandoId] = useState(null)
   const [eliminandoId, setEliminandoId] = useState(null)
+  const [fotoAmpliada, setFotoAmpliada] = useState(null)
 
 async function handleEliminar(c) {
   const confirmado = window.confirm(
@@ -499,6 +502,7 @@ async function handleEliminar(c) {
                 {c.obra && <p className="text-xs text-gray-500 mt-0.5">{c.obra}</p>}
                 <p className="text-xs text-gray-400 mt-0.5">{formatFechaHora(c.created_at)}</p>
                 <EtiquetaCierre c={c} />
+                <MiniaturasFotos fotos={c.trabajo_fotos} onVer={setFotoAmpliada} className="mt-2" />
                 {esDeMaestranza(c) && !c.trabajo && (
                   <div>
                     <VincularTrabajo c={c} onActualizada={reemplazarCotizacion} />
@@ -551,6 +555,7 @@ async function handleEliminar(c) {
           </div>
         )
       })}
+      <VisorFoto src={fotoAmpliada} onClose={() => setFotoAmpliada(null)} />
     </div>
   )
 }

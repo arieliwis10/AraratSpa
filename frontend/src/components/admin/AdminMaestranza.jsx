@@ -873,6 +873,9 @@ export default function AdminMaestranza({ onActualizarPendientes }) {
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <BadgeEstado estado={t.estado} />
                         <EtiquetaCotizacion trabajo={t} />
+                        {t.folio_cotizacion && (
+                          <span className="text-xs font-bold text-primary whitespace-nowrap">Folio {t.folio_cotizacion}</span>
+                        )}
                         <span className="text-xs text-gray-400">{estaExpandido ? '▲' : '▼'}</span>
                       </div>
                     </button>
